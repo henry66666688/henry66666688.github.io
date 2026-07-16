@@ -25,7 +25,7 @@ const state = {
   participant: null,
   pending: false,
   selectedDiscard: null,
-  lastDiscardClick: { actionId: null, at: 0 },
+  lastDiscardClick: { key: null, at: 0 },
   shownResultKey: null,
   matchLength: Number(localStorage.getItem(STORAGE_MATCH_LENGTH)) === 20 ? 20 : 10,
   showModelHand: !FAIR_TEST_MODE && localStorage.getItem(STORAGE_REVEAL) === "true",
@@ -495,7 +495,8 @@ function renderHand(container, player, legalActions, options = {}) {
       actionId,
       drawn: index === drawIndex,
       disabled: state.pending,
-      selected: actionId != null && String(state.selectedDiscard?.actionId) === String(actionId),
+      handIndex: index,
+      selected: actionId != null && state.selectedDiscard?.handIndex === index,
       recommendation: annotateRecommendation,
     }));
   });
@@ -589,9 +590,10 @@ function createTile(tileId, options = {}) {
     tile.disabled = Boolean(options.disabled);
     tile.dataset.actionId = String(options.actionId);
     tile.dataset.tileId = String(tileId);
+    tile.dataset.handIndex = String(options.handIndex);
     tile.setAttribute("aria-pressed", String(selected));
     tile.addEventListener("click", (event) => {
-      handleDiscardTileActivation(event, options.actionId, tileId);
+      handleDiscardTileActivation(event, options.actionId, tileId, options.handIndex);
     });
   }
   return tile;
@@ -714,17 +716,18 @@ function renderActions(actions) {
   });
 }
 
-function handleDiscardTileActivation(event, actionId, tileId) {
+function handleDiscardTileActivation(event, actionId, tileId, handIndex) {
   event.preventDefault();
   if (state.pending || !isDiscardActionLegal(actionId, tileId)) return;
 
   const now = performance.now();
-  const isDoubleClick = String(state.lastDiscardClick.actionId) === String(actionId)
+  const clickKey = `${actionId}:${handIndex}`;
+  const isDoubleClick = state.lastDiscardClick.key === clickKey
     && now - state.lastDiscardClick.at <= DISCARD_DOUBLE_CLICK_MS;
   state.lastDiscardClick = isDoubleClick
-    ? { actionId: null, at: 0 }
-    : { actionId, at: now };
-  state.selectedDiscard = { actionId, tileId };
+    ? { key: null, at: 0 }
+    : { key: clickKey, at: now };
+  state.selectedDiscard = { actionId, tileId, handIndex };
   syncDiscardSelectionUi();
 
   if (isDoubleClick) {
@@ -735,7 +738,7 @@ function handleDiscardTileActivation(event, actionId, tileId) {
 function confirmSelectedDiscard() {
   const selected = selectedDiscardAction();
   if (!selected || state.pending) return;
-  state.lastDiscardClick = { actionId: null, at: 0 };
+  state.lastDiscardClick = { key: null, at: 0 };
   void submitAction(selected.action_id);
 }
 
@@ -764,12 +767,13 @@ function reconcileDiscardSelection(actions) {
 
 function clearDiscardSelection() {
   state.selectedDiscard = null;
-  state.lastDiscardClick = { actionId: null, at: 0 };
+  state.lastDiscardClick = { key: null, at: 0 };
 }
 
 function syncDiscardSelectionUi() {
   elements.humanHand.querySelectorAll("button.tile[data-action-id]").forEach((tile) => {
-    const selected = String(tile.dataset.actionId) === String(state.selectedDiscard?.actionId);
+    const selected = String(tile.dataset.actionId) === String(state.selectedDiscard?.actionId)
+      && Number(tile.dataset.handIndex) === Number(state.selectedDiscard?.handIndex);
     tile.classList.toggle("selected-discard", selected);
     tile.setAttribute("aria-pressed", String(selected));
   });
