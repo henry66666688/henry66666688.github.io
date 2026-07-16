@@ -32,6 +32,13 @@ const state = {
   showRecommendationProbabilities: !FAIR_TEST_MODE
     && localStorage.getItem(STORAGE_RECOMMENDATION_PROBABILITIES) !== "false",
 };
+const RENDER_CACHE_EMPTY = Symbol("render-cache-empty");
+const renderCache = {
+  history: RENDER_CACHE_EMPTY,
+  participants: RENDER_CACHE_EMPTY,
+};
+let historyRefreshTask = null;
+const tilePreloadImages = [];
 
 const elements = Object.fromEntries(
   [
@@ -276,7 +283,7 @@ async function restoreOrNewMatch() {
       state.game = await api(`/api/matches/${sessionId}`);
       state.matchLength = Number(state.game.match.target_hands) === 20 ? 20 : 10;
       syncPreferenceControls();
-      await refreshHistory();
+      await refreshHistoryShared();
       return;
     } catch (_error) {
       localStorage.removeItem(STORAGE_SESSION);
@@ -300,7 +307,7 @@ async function createMatchRequest() {
   });
   clearDiscardSelection();
   localStorage.setItem(STORAGE_SESSION, state.game.session_id);
-  await refreshHistory();
+  await refreshHistoryShared();
 }
 
 async function nextHand() {
@@ -312,20 +319,35 @@ async function nextHand() {
       body: JSON.stringify({}),
     });
     clearDiscardSelection();
-    await refreshHistory();
+    await refreshHistoryShared();
   });
 }
 
 async function submitAction(actionId) {
   if (!state.game || state.pending) return;
   await withPending("模型思考中", async () => {
+    const completedHandsBefore = Number(state.game.match.completed_hands) || 0;
     state.game = await api(`/api/matches/${state.game.session_id}/actions`, {
       method: "POST",
       body: JSON.stringify({ action_id: actionId }),
     });
     clearDiscardSelection();
-    await refreshHistory();
+    const completedHandsAfter = Number(state.game.match.completed_hands) || 0;
+    if (completedHandsAfter > completedHandsBefore) scheduleHistoryRefresh();
   });
+}
+
+function refreshHistoryShared() {
+  if (!historyRefreshTask) {
+    historyRefreshTask = refreshHistory().finally(() => {
+      historyRefreshTask = null;
+    });
+  }
+  return historyRefreshTask;
+}
+
+function scheduleHistoryRefresh() {
+  void refreshHistoryShared().then(() => render());
 }
 
 async function refreshHistory() {
@@ -397,8 +419,14 @@ async function withPending(message, task, fullScreen = false) {
 function render() {
   const game = state.game;
   syncPreferenceControls();
-  renderHistory(state.history || emptyHistory());
-  renderParticipantStatistics(state.participants);
+  if (renderCache.history !== state.history) {
+    renderHistory(state.history || emptyHistory());
+    renderCache.history = state.history;
+  }
+  if (renderCache.participants !== state.participants) {
+    renderParticipantStatistics(state.participants);
+    renderCache.participants = state.participants;
+  }
   if (!game) {
     setControlsDisabled(state.pending);
     return;
@@ -606,6 +634,23 @@ function tileImagePath(tileId) {
   if (id < 18) return `${TILE_ASSET_ROOT}/dot-${rank}.png`;
   const filename = rank === 1 ? "bamboo-1-yaoji.png" : `bamboo-${rank}.png`;
   return `${TILE_ASSET_ROOT}/${filename}`;
+}
+
+function scheduleTileFacePreload() {
+  if (tilePreloadImages.length) return;
+  const preload = () => {
+    for (let tileId = 0; tileId < 27; tileId += 1) {
+      const face = new Image();
+      face.decoding = "async";
+      face.src = tileImagePath(tileId);
+      tilePreloadImages.push(face);
+    }
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(preload, { timeout: 1_500 });
+  } else {
+    window.setTimeout(preload, 250);
+  }
 }
 
 function renderHumanRecommendation(recommendation) {
@@ -1320,6 +1365,7 @@ async function boot() {
   try {
     await ensureParticipant();
     await withPending("正在载入 Linear-Danger 模型", restoreOrNewMatch, true);
+    scheduleTileFacePreload();
   } catch (error) {
     elements.loadingLayer.hidden = true;
     setError(error instanceof Error ? error.message : String(error));
