@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>南充麻将 1V1 · Linear-Danger</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./styles.css?v=8" />
+</head>
+<body>
+  <div id="participantGate" class="participant-gate" hidden>
+    <form id="participantForm" class="participant-dialog">
+      <span>公平测试</span>
+      <h2>请输入你的测试姓名</h2>
+      <label for="participantNameInput">姓名或测试代号</label>
+      <input id="participantNameInput" name="displayName" type="text" maxlength="24" autocomplete="name" required />
+      <p id="participantNameError" role="alert"></p>
+      <button id="participantSubmitButton" class="button primary" type="submit">进入牌桌</button>
+    </form>
+  </div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-tile" aria-hidden="true">南</span>
+        <div>
+          <h1>南充麻将 1V1</h1>
+          <p id="modelIdentity">Linear-Danger 模型正在加载</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="testerIdentity" class="tester-identity" hidden></span>
+        <div class="match-length-control" aria-label="比赛局数">
+          <span>赛制</span>
+          <div class="segmented-control" role="group">
+            <button class="segment active" type="button" data-match-length="10">10 局</button>
+            <button class="segment" type="button" data-match-length="20">20 局</button>
+          </div>
+        </div>
+        <label class="reveal-toggle analysis-only-control">
+          <input id="modelHandToggle" type="checkbox" />
+          <span class="toggle-track" aria-hidden="true"><i></i></span>
+          <span>查看模型手牌</span>
+        </label>
+        <label class="reveal-toggle analysis-only-control">
+          <input id="recommendationProbabilityToggle" type="checkbox" />
+          <span class="toggle-track" aria-hidden="true"><i></i></span>
+          <span>推荐标注</span>
+        </label>
+        <button id="nextHandButton" class="button secondary" type="button">下一局</button>
+        <button id="newMatchButton" class="button primary" type="button">新比赛</button>
+      </div>
+    </header>
+
+    <section class="score-strip" aria-label="比赛计分">
+      <div class="score-cell progress-score">
+        <span>比赛进度</span>
+        <strong id="completedHands">0 / 10</strong>
+        <small id="remainingHands">剩余 10 局</small>
+      </div>
+      <div class="score-cell human-score">
+        <span id="humanScoreLabel">你</span>
+        <strong id="humanScore">0</strong>
+        <small id="humanWins">0 胡 · 0.0%</small>
+      </div>
+      <div class="score-cell model-score">
+        <span>模型</span>
+        <strong id="modelScore">0</strong>
+        <small id="modelWins">0 胡 · 0.0%</small>
+      </div>
+      <div class="score-cell">
+        <span>分差</span>
+        <strong id="scoreMargin">0</strong>
+        <small>你的净领先</small>
+      </div>
+      <div class="score-cell">
+        <span>流局</span>
+        <strong id="drawCount">0</strong>
+        <small id="drawRate">0.0%</small>
+      </div>
+      <div class="score-cell wall-score">
+        <span>牌墙</span>
+        <strong id="wallCount">-- 张</strong>
+        <small id="matchState">准备中</small>
+      </div>
+    </section>
+
+    <div class="match-progress-track" aria-hidden="true">
+      <span id="matchProgressBar"></span>
+    </div>
+
+    <section class="history-score-strip" aria-label="历史累计战绩">
+      <div class="history-heading">
+        <span>历史累计</span>
+        <strong>总对局统计</strong>
+        <small id="historyRange">等待读取历史记录</small>
+      </div>
+      <div>
+        <span>已记录</span>
+        <strong id="historyTotalHands">0 局</strong>
+        <small id="historyMatchCount">0 场比赛</small>
+      </div>
+      <div class="human-history-score">
+        <span id="historyHumanScoreLabel">你的累计分</span>
+        <strong id="historyHumanScore">0</strong>
+        <small id="historyHumanWins">0 胡 · 0.0%</small>
+      </div>
+      <div class="model-history-score">
+        <span>模型累计分</span>
+        <strong id="historyModelScore">0</strong>
+        <small id="historyModelWins">0 胡 · 0.0%</small>
+      </div>
+      <div>
+        <span>累计分差</span>
+        <strong id="historyScoreMargin">0</strong>
+        <small>你的净领先</small>
+      </div>
+      <div>
+        <span>累计流局</span>
+        <strong id="historyDrawCount">0</strong>
+        <small id="historyDrawRate">0.0%</small>
+      </div>
+    </section>
+
+    <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+
+    <main class="game-layout">
+      <section class="table-area" aria-label="南充麻将牌桌">
+        <section class="player-band model-band" aria-labelledby="modelPlayerLabel">
+          <header class="player-heading">
+            <div>
+              <span id="modelPlayerLabel" class="player-name">Linear-Danger</span>
+              <span id="modelDealer" class="dealer-mark" hidden>先</span>
+            </div>
+            <span id="modelVisibilityMark" class="visibility-mark">手牌已隐藏</span>
+          </header>
+          <div id="modelMelds" class="meld-row" aria-label="模型副露"></div>
+          <div id="modelHand" class="hand-row" aria-label="模型手牌"></div>
+        </section>
+
+        <section class="table-center">
+          <section class="river-zone">
+            <header>模型牌河</header>
+            <div id="modelRiver" class="river-grid" aria-label="模型牌河"></div>
+          </section>
+
+          <section class="turn-console" aria-live="polite">
+            <span id="handLabel" class="hand-label">第 1 局</span>
+            <strong id="turnStatus">正在开局</strong>
+            <span id="phaseStatus">--</span>
+            <div class="last-action">
+              <span>最近动作</span>
+              <b id="lastAction">--</b>
+            </div>
+          </section>
+
+          <section class="river-zone human-river-zone">
+            <header>你的牌河</header>
+            <div id="humanRiver" class="river-grid" aria-label="你的牌河"></div>
+          </section>
+        </section>
+
+        <section class="player-band human-band" aria-labelledby="humanPlayerLabel">
+          <header class="player-heading">
+            <div>
+              <span id="humanPlayerLabel" class="player-name">你</span>
+              <span id="humanDealer" class="dealer-mark" hidden>先</span>
+            </div>
+            <span id="humanDrawSource" class="draw-source"></span>
+          </header>
+          <div id="humanMelds" class="meld-row" aria-label="你的副露"></div>
+          <div id="humanHand" class="hand-row human-hand" aria-label="你的手牌"></div>
+        </section>
+
+        <section class="action-dock" aria-label="合法动作">
+          <div>
+            <span class="action-caption">当前决策</span>
+            <strong id="actionPrompt">等待开局</strong>
+          </div>
+          <span class="forced-hu-mark">有胡必胡 · 自动结算</span>
+          <div id="specialActions" class="special-actions"></div>
+        </section>
+      </section>
+
+      <aside class="inspection-panel" aria-label="对局分析面板">
+        <section class="inspection-section recommendation-section analysis-only-section">
+          <header>
+            <h2>你的出牌建议</h2>
+            <span id="humanRecommendationState">等待你的回合</span>
+          </header>
+          <dl class="metric-list decision-metrics recommendation-metrics">
+            <div><dt>最高动作</dt><dd id="humanRecommendationAction">--</dd></div>
+            <div class="probability-detail"><dt>动作概率</dt><dd id="humanRecommendationProbability">--</dd></div>
+            <div><dt>局面价值</dt><dd id="humanRecommendationValue">--</dd></div>
+            <div class="probability-detail"><dt>弃牌概率总量</dt><dd id="humanDiscardProbabilityMass">--</dd></div>
+          </dl>
+          <div id="humanRecommendationList" class="recommendation-list"></div>
+          <p class="recommendation-note probability-detail">牌面标注与“全动作概率”一致；“弃牌内概率”用于只比较可打出的牌。</p>
+        </section>
+
+        <section class="inspection-section analysis-only-section">
+          <header>
+            <h2>模型实际决策</h2>
+            <span id="modelMode">贪心策略</span>
+          </header>
+          <dl class="metric-list decision-metrics">
+            <div class="probability-detail"><dt>动作概率</dt><dd id="modelProbability">--</dd></div>
+            <div><dt>局面价值</dt><dd id="modelValue">--</dd></div>
+            <div><dt>策略熵</dt><dd id="modelEntropy">--</dd></div>
+            <div><dt>弃牌危险度</dt><dd id="modelDanger">--</dd></div>
+          </dl>
+          <div id="modelTopActions" class="model-top-actions"></div>
+        </section>
+
+        <section class="inspection-section statistics-section">
+          <header>
+            <h2>本轮统计</h2>
+            <div class="export-actions">
+              <button id="exportCsvButton" type="button" title="导出 CSV">CSV</button>
+              <button id="exportJsonButton" type="button" title="导出 JSON">JSON</button>
+            </div>
+          </header>
+          <dl class="stat-grid">
+            <div><dt>你的自摸</dt><dd id="humanSelfDraws">0</dd></div>
+            <div><dt>模型自摸</dt><dd id="modelSelfDraws">0</dd></div>
+            <div><dt>你的点炮</dt><dd id="humanDealIns">0</dd></div>
+            <div><dt>模型点炮</dt><dd id="modelDealIns">0</dd></div>
+            <div><dt>平均胡牌巡</dt><dd id="averageHuRound">--</dd></div>
+            <div><dt>你的平均听牌巡</dt><dd id="humanTenpaiRound">--</dd></div>
+            <div><dt>模型平均听牌巡</dt><dd id="modelTenpaiRound">--</dd></div>
+            <div><dt>平均胡牌番数</dt><dd id="averageWinFan">--</dd></div>
+          </dl>
+          <p id="claimSummary" class="claim-summary">碰杠统计将在完成首局后显示</p>
+        </section>
+
+        <section class="inspection-section history-statistics-section">
+          <header>
+            <h2>历史总统计</h2>
+            <div class="export-actions">
+              <button id="historyExportCsvButton" type="button" title="导出全部历史 CSV">CSV</button>
+              <button id="historyExportJsonButton" type="button" title="导出全部历史 JSON">JSON</button>
+            </div>
+          </header>
+          <dl class="stat-grid">
+            <div><dt>有记录比赛</dt><dd id="historyRecordedMatches">0</dd></div>
+            <div><dt>完整比赛</dt><dd id="historyCompletedMatches">0</dd></div>
+            <div><dt>你的自摸</dt><dd id="historyHumanSelfDraws">0</dd></div>
+            <div><dt>模型自摸</dt><dd id="historyModelSelfDraws">0</dd></div>
+            <div><dt>你的点炮</dt><dd id="historyHumanDealIns">0</dd></div>
+            <div><dt>模型点炮</dt><dd id="historyModelDealIns">0</dd></div>
+            <div><dt>平均胡牌巡</dt><dd id="historyAverageHuRound">--</dd></div>
+            <div><dt>完整比赛胜负</dt><dd id="historyMatchOutcomes">0 / 0 / 0</dd></div>
+            <div><dt>你的平均听牌巡</dt><dd id="historyHumanTenpaiRound">--</dd></div>
+            <div><dt>模型平均听牌巡</dt><dd id="historyModelTenpaiRound">--</dd></div>
+            <div><dt>你的平均胡番</dt><dd id="historyHumanAverageWinFan">--</dd></div>
+            <div><dt>模型平均胡番</dt><dd id="historyModelAverageWinFan">--</dd></div>
+          </dl>
+          <p id="historyClaimSummary" class="claim-summary">等待历史动作统计</p>
+          <p id="historyPersistenceStatus" class="history-persistence-status">历史记录将自动保存在本机</p>
+        </section>
+
+        <section id="participantStatisticsSection" class="inspection-section participant-statistics-section">
+          <header>
+            <h2>测试人员统计</h2>
+            <div class="export-actions">
+              <span id="participantCount">0 人</span>
+              <button id="participantExportJsonButton" type="button" title="导出全部测试人员统计">JSON</button>
+            </div>
+          </header>
+          <div id="participantStatisticsList" class="participant-statistics-list"></div>
+        </section>
+
+        <section class="inspection-section records-section">
+          <header>
+            <h2>本轮逐局</h2>
+            <span id="recordCount">0 条</span>
+          </header>
+          <ol id="handRecords" class="hand-records"></ol>
+        </section>
+
+        <section class="inspection-section history-records-section">
+          <header>
+            <h2>最近历史</h2>
+            <span id="historyRecordCount">0 条</span>
+          </header>
+          <ol id="historyHandRecords" class="hand-records history-hand-records"></ol>
+        </section>
+
+        <section class="inspection-section privacy-section">
+          <header><h2>信息边界</h2></header>
+          <div class="privacy-row"><span>你的暗牌</span><b>模型不可见</b></div>
+          <div class="privacy-row"><span>未知牌墙</span><b>模型不可见</b></div>
+          <div class="privacy-row"><span>危险度输入</span><b>仅公开信息</b></div>
+        </section>
+
+        <section class="inspection-section log-section">
+          <header>
+            <h2>本局动作</h2>
+            <span id="seedLabel">Seed --</span>
+          </header>
+          <ol id="actionLog" class="action-log"></ol>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="resultDialog" class="result-dialog">
+    <div class="result-content">
+      <span id="resultKicker">本局结束</span>
+      <h2 id="resultTitle">--</h2>
+      <p id="resultSummary"></p>
+      <dl id="fanDetails" class="fan-details"></dl>
+      <div class="result-actions">
+        <button id="dialogNextHandButton" class="button primary" type="button">下一局</button>
+        <button id="dialogCloseButton" class="button secondary" type="button">查看牌桌</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="loadingLayer" class="loading-layer" aria-live="polite">
+    <div class="loading-tile" aria-hidden="true">万</div>
+    <strong id="loadingText">正在载入 Linear-Danger 模型</strong>
+  </div>
+
+  <script src="./public-config.js?v=1"></script>
+  <script src="./app.js?v=8"></script>
+</body>
+</html>

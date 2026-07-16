@@ -1,0 +1,8 @@
+{
+  "site": "nanchong-mahjong-fair-test",
+  "mode": "tester",
+  "api_base": "https://podcast-cycle-tracking-bargains.trycloudflare.com",
+  "contains_model_weights": false,
+  "contains_history_database": false,
+  "contains_admin_access_token": false
+}
