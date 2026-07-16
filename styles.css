@@ -370,6 +370,28 @@ button.tile.selected-discard:focus-visible {
   outline-offset: 1px;
 }
 
+.tile.optimistic-source {
+  opacity: 0;
+  transform: translateY(8px) scale(0.9);
+}
+
+.tile.optimistic-discard {
+  outline: 2px solid #d8a53a;
+  outline-offset: 1px;
+  animation: optimistic-discard-in 160ms ease-out;
+}
+
+@keyframes optimistic-discard-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .tile.recommended {
   border-color: #d2a43f;
   background: #fff9df;

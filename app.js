@@ -327,6 +327,7 @@ async function submitAction(actionId) {
   if (!state.game || state.pending) return;
   await withPending("模型思考中", async () => {
     const completedHandsBefore = Number(state.game.match.completed_hands) || 0;
+    renderOptimisticDiscard(actionId);
     state.game = await api(`/api/matches/${state.game.session_id}/actions`, {
       method: "POST",
       body: JSON.stringify({ action_id: actionId }),
@@ -646,11 +647,23 @@ function scheduleTileFacePreload() {
       tilePreloadImages.push(face);
     }
   };
-  if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(preload, { timeout: 1_500 });
-  } else {
-    window.setTimeout(preload, 250);
-  }
+  window.setTimeout(preload, 0);
+}
+
+function renderOptimisticDiscard(actionId) {
+  const action = (state.game?.legal_actions || []).find((candidate) => (
+    candidate.action_family === "DISCARD"
+    && String(candidate.action_id) === String(actionId)
+  ));
+  if (!action) return;
+
+  const selectedTile = elements.humanHand.querySelector("button.tile.selected-discard");
+  if (selectedTile) selectedTile.classList.add("optimistic-source");
+  const riverTile = createTile(action.tile_id, { small: true });
+  riverTile.classList.add("optimistic-discard");
+  riverTile.setAttribute("aria-label", `正在打出 ${tileMeta(action.tile_id).label}`);
+  elements.humanRiver.appendChild(riverTile);
+  elements.actionPrompt.textContent = `已打出 ${tileMeta(action.tile_id).label}`;
 }
 
 function renderHumanRecommendation(recommendation) {
