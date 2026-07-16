@@ -325,6 +325,10 @@ button.tile {
   cursor: pointer;
 }
 
+button.tile.legal {
+  touch-action: manipulation;
+}
+
 button.tile.legal:hover,
 button.tile.legal:focus-visible {
   border-color: #f0c367;
