@@ -332,6 +332,16 @@ button.tile.legal:focus-visible {
   transform: translateY(-5px);
 }
 
+button.tile.selected-discard,
+button.tile.selected-discard:hover,
+button.tile.selected-discard:focus-visible {
+  z-index: 3;
+  border-color: #b27a14;
+  background: #fff0b8;
+  box-shadow: 0 0 0 3px rgb(210 154 44 / 42%), 0 5px 9px rgb(0 0 0 / 24%);
+  transform: translateY(-8px);
+}
+
 .tile.drawn {
   margin-left: 10px;
   border-color: #d5a64d;
@@ -534,6 +544,26 @@ button.tile.legal:focus-visible {
 .action-dock > div:first-child {
   display: grid;
   gap: 3px;
+}
+
+.decision-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.discard-confirm {
+  min-width: 126px;
+  border-color: #a96f12;
+  background: var(--gold);
+  color: #282116;
+}
+
+.discard-confirm:hover:not(:disabled),
+.discard-confirm:focus-visible:not(:disabled) {
+  background: #f6c75d;
 }
 
 .action-caption {
@@ -907,6 +937,12 @@ button.tile.legal:focus-visible {
     transform: translateY(-3px);
   }
 
+  button.tile.selected-discard,
+  button.tile.selected-discard:hover,
+  button.tile.selected-discard:focus-visible {
+    transform: translateY(-5px);
+  }
+
   .tile.small .rank {
     font-size: 14px;
   }
@@ -961,9 +997,16 @@ button.tile.legal:focus-visible {
   }
 
   .special-actions {
-    max-width: 58%;
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  .decision-actions {
+    max-width: 64%;
+  }
+
+  .discard-confirm {
+    min-width: 104px;
   }
 
   .action-button {

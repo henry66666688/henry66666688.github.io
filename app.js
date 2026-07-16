@@ -16,6 +16,7 @@ const TILE_ASSET_ROOT = String(
   PUBLIC_CONFIG.tileAssetRoot
   || "/assets/assets/tiles/complete-chart-reference-v2/front"
 ).replace(/\/$/, "");
+const DISCARD_DOUBLE_CLICK_MS = 450;
 
 const state = {
   game: null,
@@ -23,6 +24,8 @@ const state = {
   participants: null,
   participant: null,
   pending: false,
+  selectedDiscard: null,
+  lastDiscardClick: { actionId: null, at: 0 },
   shownResultKey: null,
   matchLength: Number(localStorage.getItem(STORAGE_MATCH_LENGTH)) === 20 ? 20 : 10,
   showModelHand: !FAIR_TEST_MODE && localStorage.getItem(STORAGE_REVEAL) === "true",
@@ -45,7 +48,7 @@ const elements = Object.fromEntries(
     "humanRecommendationState", "humanRecommendationAction",
     "humanRecommendationProbability", "humanRecommendationValue",
     "humanDiscardProbabilityMass", "humanRecommendationList",
-    "newMatchButton", "nextHandButton", "modelHandToggle", "recommendationProbabilityToggle",
+    "newMatchButton", "nextHandButton", "confirmDiscardButton", "modelHandToggle", "recommendationProbabilityToggle",
     "modelVisibilityMark",
     "humanSelfDraws", "modelSelfDraws", "humanDealIns", "modelDealIns",
     "averageHuRound", "humanTenpaiRound", "modelTenpaiRound", "averageWinFan",
@@ -295,6 +298,7 @@ async function createMatchRequest() {
     method: "POST",
     body: JSON.stringify({ target_hands: state.matchLength }),
   });
+  clearDiscardSelection();
   localStorage.setItem(STORAGE_SESSION, state.game.session_id);
   await refreshHistory();
 }
@@ -307,6 +311,7 @@ async function nextHand() {
       method: "POST",
       body: JSON.stringify({}),
     });
+    clearDiscardSelection();
     await refreshHistory();
   });
 }
@@ -318,6 +323,7 @@ async function submitAction(actionId) {
       method: "POST",
       body: JSON.stringify({ action_id: actionId }),
     });
+    clearDiscardSelection();
     await refreshHistory();
   });
 }
@@ -401,6 +407,7 @@ function render() {
   const model = game.players.find((player) => player.role === "model");
   const match = game.match;
   const modelInfo = game.model;
+  reconcileDiscardSelection(game.legal_actions);
 
   elements.modelIdentity.textContent = [
     modelInfo.name,
@@ -488,6 +495,7 @@ function renderHand(container, player, legalActions, options = {}) {
       actionId,
       drawn: index === drawIndex,
       disabled: state.pending,
+      selected: actionId != null && String(state.selectedDiscard?.actionId) === String(actionId),
       recommendation: annotateRecommendation,
     }));
   });
@@ -532,12 +540,14 @@ function createTile(tileId, options = {}) {
   const showRecommendation = Boolean(
     options.recommendation && state.showRecommendationProbabilities
   );
+  const selected = interactive && Boolean(options.selected);
   const tile = document.createElement(interactive ? "button" : "div");
   const meta = tileMeta(tileId);
   tile.className = [
     "tile", meta.className, options.small ? "small" : "", options.drawn ? "drawn" : "",
     options.lastDiscard ? "last-discard" : "", options.concealedMeld ? "concealed-meld" : "",
-    interactive ? "legal" : "", showRecommendation ? "recommended" : "",
+    interactive ? "legal" : "", selected ? "selected-discard" : "",
+    showRecommendation ? "recommended" : "",
   ].filter(Boolean).join(" ");
   const face = document.createElement("img");
   face.className = "tile-face";
@@ -571,12 +581,18 @@ function createTile(tileId, options = {}) {
     ? `，模型推荐第 ${options.recommendation.rank}，全动作概率 ${formatPercent(options.recommendation.probability)}，弃牌内概率 ${formatPercent(options.recommendation.conditional_discard_probability)}`
     : "";
   tile.setAttribute("aria-label", `${meta.label}${recommendationText}`);
-  tile.title = interactive ? `打出 ${meta.label}${recommendationText}` : meta.label;
+  tile.title = interactive
+    ? `单击选择 ${meta.label}，双击直接打出${recommendationText}`
+    : meta.label;
   if (interactive) {
     tile.type = "button";
     tile.disabled = Boolean(options.disabled);
     tile.dataset.actionId = String(options.actionId);
-    tile.addEventListener("click", () => submitAction(options.actionId));
+    tile.dataset.tileId = String(tileId);
+    tile.setAttribute("aria-pressed", String(selected));
+    tile.addEventListener("click", (event) => {
+      handleDiscardTileActivation(event, options.actionId, tileId);
+    });
   }
   return tile;
 }
@@ -661,6 +677,7 @@ function renderTurn(game) {
 
 function renderActions(actions) {
   elements.specialActions.replaceChildren();
+  elements.confirmDiscardButton.hidden = true;
   if (!state.game || state.game.terminal) {
     elements.actionPrompt.textContent = state.game?.match.match_complete ? "比赛已完成" : "本局已结算";
     return;
@@ -671,7 +688,19 @@ function renderActions(actions) {
   }
   const hasDiscard = actions.some((action) => action.action_family === "DISCARD");
   const special = actions.filter((action) => action.action_family !== "DISCARD");
-  elements.actionPrompt.textContent = hasDiscard ? "请选择一张牌打出" : "请选择响应动作";
+  if (hasDiscard) {
+    const selected = selectedDiscardAction(actions);
+    elements.confirmDiscardButton.hidden = false;
+    elements.confirmDiscardButton.disabled = state.pending || !selected;
+    elements.confirmDiscardButton.textContent = selected
+      ? `确认打出 ${tileMeta(selected.tile_id).label}`
+      : "确认打出";
+    elements.actionPrompt.textContent = selected
+      ? `已选择 ${tileMeta(selected.tile_id).label}`
+      : "请选择一张牌";
+  } else {
+    elements.actionPrompt.textContent = "请选择响应动作";
+  }
   special.forEach((action) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -683,6 +712,69 @@ function renderActions(actions) {
     button.addEventListener("click", () => submitAction(action.action_id));
     elements.specialActions.appendChild(button);
   });
+}
+
+function handleDiscardTileActivation(event, actionId, tileId) {
+  event.preventDefault();
+  if (state.pending || !isDiscardActionLegal(actionId, tileId)) return;
+
+  const now = performance.now();
+  const isDoubleClick = String(state.lastDiscardClick.actionId) === String(actionId)
+    && now - state.lastDiscardClick.at <= DISCARD_DOUBLE_CLICK_MS;
+  state.lastDiscardClick = isDoubleClick
+    ? { actionId: null, at: 0 }
+    : { actionId, at: now };
+  state.selectedDiscard = { actionId, tileId };
+  syncDiscardSelectionUi();
+
+  if (isDoubleClick) {
+    void submitAction(actionId);
+  }
+}
+
+function confirmSelectedDiscard() {
+  const selected = selectedDiscardAction();
+  if (!selected || state.pending) return;
+  state.lastDiscardClick = { actionId: null, at: 0 };
+  void submitAction(selected.action_id);
+}
+
+function selectedDiscardAction(actions = state.game?.legal_actions || []) {
+  if (!state.selectedDiscard) return null;
+  return actions.find((action) => (
+    action.action_family === "DISCARD"
+    && String(action.action_id) === String(state.selectedDiscard.actionId)
+    && Number(action.tile_id) === Number(state.selectedDiscard.tileId)
+  )) || null;
+}
+
+function isDiscardActionLegal(actionId, tileId) {
+  return Boolean((state.game?.legal_actions || []).some((action) => (
+    action.action_family === "DISCARD"
+    && String(action.action_id) === String(actionId)
+    && Number(action.tile_id) === Number(tileId)
+  )));
+}
+
+function reconcileDiscardSelection(actions) {
+  if (state.selectedDiscard && !selectedDiscardAction(actions)) {
+    clearDiscardSelection();
+  }
+}
+
+function clearDiscardSelection() {
+  state.selectedDiscard = null;
+  state.lastDiscardClick = { actionId: null, at: 0 };
+}
+
+function syncDiscardSelectionUi() {
+  elements.humanHand.querySelectorAll("button.tile[data-action-id]").forEach((tile) => {
+    const selected = String(tile.dataset.actionId) === String(state.selectedDiscard?.actionId);
+    tile.classList.toggle("selected-discard", selected);
+    tile.setAttribute("aria-pressed", String(selected));
+  });
+  renderActions(state.game?.legal_actions || []);
+  setControlsDisabled(state.pending);
 }
 
 function renderModelDecision(decision) {
@@ -1042,6 +1134,7 @@ function setControlsDisabled(disabled) {
   document.querySelectorAll("button.tile, .action-button").forEach((button) => {
     button.disabled = disabled;
   });
+  elements.confirmDiscardButton.disabled = disabled || !selectedDiscardAction();
 }
 
 function exportJson() {
@@ -1186,6 +1279,7 @@ function escapeHtml(value) {
 
 elements.newMatchButton.addEventListener("click", newMatch);
 elements.nextHandButton.addEventListener("click", nextHand);
+elements.confirmDiscardButton.addEventListener("click", confirmSelectedDiscard);
 elements.dialogNextHandButton.addEventListener("click", nextHand);
 elements.dialogCloseButton.addEventListener("click", closeResultDialog);
 elements.exportCsvButton.addEventListener("click", exportCsv);

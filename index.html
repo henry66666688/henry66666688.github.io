@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light" />
   <title>南充麻将 1V1 · Linear-Danger</title>
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./styles.css?v=8" />
+  <link rel="stylesheet" href="./styles.css?v=9" />
 </head>
 <body>
   <div id="participantGate" class="participant-gate" hidden>
@@ -179,7 +179,16 @@
             <strong id="actionPrompt">等待开局</strong>
           </div>
           <span class="forced-hu-mark">有胡必胡 · 自动结算</span>
-          <div id="specialActions" class="special-actions"></div>
+          <div class="decision-actions">
+            <button
+              id="confirmDiscardButton"
+              class="action-button discard-confirm"
+              type="button"
+              disabled
+              hidden
+            >确认打出</button>
+            <div id="specialActions" class="special-actions"></div>
+          </div>
         </section>
       </section>
 
@@ -324,6 +333,6 @@
   </div>
 
   <script src="./public-config.js?v=1"></script>
-  <script src="./app.js?v=8"></script>
+  <script src="./app.js?v=9"></script>
 </body>
 </html>
