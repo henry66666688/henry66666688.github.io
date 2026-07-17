@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light" />
   <title>南充麻将 1V1 · Linear-Danger</title>
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./styles.css?v=12" />
+  <link rel="stylesheet" href="./styles.css?v=13" />
 </head>
 <body>
   <div id="participantGate" class="participant-gate" hidden>
@@ -312,6 +312,107 @@
         </section>
       </aside>
     </main>
+
+    <section id="decisionAuditPanel" class="decision-audit-panel analysis-only-section" aria-labelledby="decisionAuditTitle">
+      <header class="audit-panel-header">
+        <div>
+          <span>测试决策审计</span>
+          <h2 id="decisionAuditTitle">玩家动作与模型建议对比</h2>
+          <p>不一致动作先记为待复核候选，查看当时牌面后再判断是否为真实纠错。</p>
+        </div>
+        <div class="audit-header-actions">
+          <span id="auditLastUpdated">尚未读取</span>
+          <button id="auditRefreshButton" class="button secondary" type="button">刷新</button>
+        </div>
+      </header>
+
+      <dl class="audit-metric-strip">
+        <div><dt>全部动作</dt><dd id="auditTotalActions">0</dd></div>
+        <div><dt>Top1 一致率</dt><dd id="auditAgreementRate">0.0%</dd></div>
+        <div><dt>不一致候选</dt><dd id="auditMismatchCount">0</dd></div>
+        <div><dt>弃牌不一致</dt><dd id="auditDiscardMismatchCount">0</dd></div>
+        <div><dt>碰杠不一致</dt><dd id="auditPengGangMismatchCount">0</dd></div>
+        <div><dt>确认纠错</dt><dd id="auditConfirmedCount">0</dd></div>
+      </dl>
+
+      <div class="audit-toolbar">
+        <label>测试人员
+          <select id="auditParticipantFilter"><option value="">全部测试人员</option></select>
+        </label>
+        <label>动作类型
+          <select id="auditCategoryFilter">
+            <option value="">全部动作</option>
+            <option value="DISCARD">弃牌</option>
+            <option value="PENG_GANG">碰 / 杠相关</option>
+            <option value="RESPONSE">其他响应</option>
+            <option value="OTHER">其他</option>
+          </select>
+        </label>
+        <div class="audit-export-actions">
+          <button id="auditExportCsvButton" type="button">动作 CSV</button>
+          <button id="auditExportJsonButton" type="button">动作 JSON</button>
+          <button id="correctionExportCsvButton" type="button">纠错 CSV</button>
+          <button id="correctionExportJsonButton" type="button">纠错 JSON</button>
+        </div>
+      </div>
+
+      <section class="audit-table-band" aria-labelledby="allActionComparisonTitle">
+        <header>
+          <div>
+            <h3 id="allActionComparisonTitle">全部动作对比表</h3>
+            <p id="auditTableRange">0 条记录</p>
+          </div>
+          <div class="audit-pagination">
+            <button id="auditPreviousButton" type="button" aria-label="上一页">上一页</button>
+            <span id="auditPageLabel">第 1 页</span>
+            <button id="auditNextButton" type="button" aria-label="下一页">下一页</button>
+          </div>
+        </header>
+        <div class="audit-table-scroll">
+          <table class="audit-table">
+            <thead><tr>
+              <th>时间 / 测试员</th><th>局面</th><th>玩家动作</th><th>模型 Top1</th>
+              <th>玩家概率</th><th>Top1 概率</th><th>概率差</th><th>对比</th><th>牌面</th>
+            </tr></thead>
+            <tbody id="auditActionTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="audit-table-band correction-band" aria-labelledby="correctionTableTitle">
+        <header>
+          <div>
+            <h3 id="correctionTableTitle">纠错候选表</h3>
+            <p id="correctionTableRange">0 条候选</p>
+          </div>
+          <div class="correction-controls">
+            <label>复核状态
+              <select id="correctionStatusFilter">
+                <option value="">全部状态</option>
+                <option value="pending">待复核</option>
+                <option value="confirmed">确认纠错</option>
+                <option value="rejected">不是纠错</option>
+                <option value="uncertain">无法确定</option>
+              </select>
+            </label>
+            <div class="audit-pagination">
+              <button id="correctionPreviousButton" type="button" aria-label="上一页">上一页</button>
+              <span id="correctionPageLabel">第 1 页</span>
+              <button id="correctionNextButton" type="button" aria-label="下一页">下一页</button>
+            </div>
+          </div>
+        </header>
+        <div class="audit-table-scroll">
+          <table class="audit-table correction-table">
+            <thead><tr>
+              <th>时间 / 测试员</th><th>类型</th><th>玩家动作</th><th>模型 Top1</th>
+              <th>概率差</th><th>复核状态</th><th>备注</th><th>复核牌面</th>
+            </tr></thead>
+            <tbody id="correctionTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   </div>
 
   <dialog id="resultDialog" class="result-dialog">
@@ -327,12 +428,67 @@
     </div>
   </dialog>
 
+  <dialog id="auditSceneDialog" class="audit-scene-dialog">
+    <div class="audit-scene-content">
+      <header class="audit-scene-header">
+        <div>
+          <span id="auditSceneKicker">决策前牌面</span>
+          <h2 id="auditSceneTitle">动作复核</h2>
+          <p id="auditSceneMeta"></p>
+        </div>
+        <button id="auditSceneCloseButton" class="button secondary" type="button">关闭</button>
+      </header>
+
+      <div class="audit-scene-comparison">
+        <div><span>测试员选择</span><strong id="auditSceneSelectedAction">--</strong><small id="auditSceneSelectedProbability">--</small></div>
+        <div class="audit-versus">对比</div>
+        <div><span>模型 Top1</span><strong id="auditSceneRecommendedAction">--</strong><small id="auditSceneRecommendedProbability">--</small></div>
+        <div><span>概率差</span><strong id="auditSceneProbabilityGap">--</strong><small>Top1 减玩家动作</small></div>
+      </div>
+
+      <section class="audit-replay-table" aria-label="决策前牌面复盘">
+        <div class="audit-replay-player model">
+          <header><strong>模型</strong><span id="auditSceneModelCount">0 张暗牌</span></header>
+          <div id="auditSceneModelMelds" class="meld-row"></div>
+          <div id="auditSceneModelHand" class="hand-row"></div>
+        </div>
+        <div class="audit-replay-center">
+          <div><span>模型牌河</span><div id="auditSceneModelRiver" class="river-grid"></div></div>
+          <strong id="auditSceneTableStatus">--</strong>
+          <div><span>测试员牌河</span><div id="auditSceneHumanRiver" class="river-grid"></div></div>
+        </div>
+        <div class="audit-replay-player human">
+          <header><strong>测试员</strong><span>当时可见手牌</span></header>
+          <div id="auditSceneHumanMelds" class="meld-row"></div>
+          <div id="auditSceneHumanHand" class="hand-row"></div>
+        </div>
+      </section>
+
+      <section class="audit-legal-actions">
+        <header><h3>当时全部合法动作概率</h3><span>按模型概率从高到低</span></header>
+        <div id="auditSceneLegalActions"></div>
+      </section>
+
+      <section id="auditReviewSection" class="audit-review-section">
+        <header><h3>管理员复核</h3><span id="auditReviewCurrentStatus">待复核</span></header>
+        <label for="auditReviewNote">判断依据 / 备注</label>
+        <textarea id="auditReviewNote" rows="3" maxlength="1000" placeholder="例如：模型拆掉完整顺子，测试员保留牌型结构"></textarea>
+        <div class="audit-review-actions">
+          <button type="button" data-review-status="confirmed">确认是真实纠错</button>
+          <button type="button" data-review-status="rejected">不是纠错</button>
+          <button type="button" data-review-status="uncertain">无法确定</button>
+          <button type="button" data-review-status="pending">恢复待复核</button>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
   <div id="loadingLayer" class="loading-layer" aria-live="polite">
     <div class="loading-tile" aria-hidden="true">万</div>
     <strong id="loadingText">正在载入 Linear-Danger 模型</strong>
   </div>
 
   <script src="./public-config.js?v=1"></script>
-  <script src="./app.js?v=12"></script>
+  <script src="./app.js?v=13"></script>
 </body>
 </html>

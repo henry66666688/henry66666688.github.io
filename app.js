@@ -17,11 +17,19 @@ const TILE_ASSET_ROOT = String(
   || "/assets/assets/tiles/complete-chart-reference-v2/front"
 ).replace(/\/$/, "");
 const DISCARD_DOUBLE_CLICK_MS = 450;
+const AUDIT_PAGE_SIZE = 100;
+const AUDIT_REFRESH_MS = 20_000;
 
 const state = {
   game: null,
   history: null,
   participants: null,
+  actionComparisons: null,
+  corrections: null,
+  auditPage: 0,
+  correctionPage: 0,
+  currentAuditRecord: null,
+  auditLoading: false,
   participant: null,
   pending: false,
   selectedDiscard: null,
@@ -36,8 +44,11 @@ const RENDER_CACHE_EMPTY = Symbol("render-cache-empty");
 const renderCache = {
   history: RENDER_CACHE_EMPTY,
   participants: RENDER_CACHE_EMPTY,
+  actionComparisons: RENDER_CACHE_EMPTY,
+  corrections: RENDER_CACHE_EMPTY,
 };
 let historyRefreshTask = null;
+let auditRefreshTimer = null;
 const tilePreloadImages = [];
 
 const elements = Object.fromEntries(
@@ -70,6 +81,23 @@ const elements = Object.fromEntries(
     "participantSubmitButton", "testerIdentity", "humanScoreLabel", "historyHumanScoreLabel",
     "participantStatisticsSection", "participantCount", "participantStatisticsList",
     "participantExportJsonButton",
+    "decisionAuditPanel", "auditLastUpdated", "auditRefreshButton",
+    "auditTotalActions", "auditAgreementRate", "auditMismatchCount",
+    "auditDiscardMismatchCount", "auditPengGangMismatchCount", "auditConfirmedCount",
+    "auditParticipantFilter", "auditCategoryFilter", "correctionStatusFilter",
+    "auditExportCsvButton", "auditExportJsonButton", "correctionExportCsvButton",
+    "correctionExportJsonButton", "auditTableRange", "auditActionTableBody",
+    "auditPreviousButton", "auditNextButton", "auditPageLabel",
+    "correctionTableRange", "correctionTableBody", "correctionPreviousButton",
+    "correctionNextButton", "correctionPageLabel",
+    "auditSceneDialog", "auditSceneKicker", "auditSceneTitle", "auditSceneMeta",
+    "auditSceneCloseButton", "auditSceneSelectedAction", "auditSceneSelectedProbability",
+    "auditSceneRecommendedAction", "auditSceneRecommendedProbability",
+    "auditSceneProbabilityGap", "auditSceneModelCount", "auditSceneModelMelds",
+    "auditSceneModelHand", "auditSceneModelRiver", "auditSceneTableStatus",
+    "auditSceneHumanRiver", "auditSceneHumanMelds", "auditSceneHumanHand",
+    "auditSceneLegalActions", "auditReviewSection", "auditReviewCurrentStatus",
+    "auditReviewNote",
     "resultDialog", "resultKicker", "resultTitle", "resultSummary", "fanDetails",
     "dialogNextHandButton", "dialogCloseButton", "loadingLayer", "loadingText",
   ].map((id) => [id, document.getElementById(id)])
@@ -116,6 +144,21 @@ const WIN_SOURCE_LABELS = {
   discard_win: "点炮胡",
   rob_kong: "抢杠胡",
   wall_exhausted: "流局",
+};
+
+const AUDIT_REVIEW_LABELS = {
+  pending: "待复核",
+  confirmed: "确认纠错",
+  rejected: "不是纠错",
+  uncertain: "无法确定",
+  not_applicable: "Top1 一致",
+};
+
+const AUDIT_CATEGORY_LABELS = {
+  DISCARD: "弃牌",
+  PENG_GANG: "碰 / 杠相关",
+  RESPONSE: "响应",
+  OTHER: "其他",
 };
 
 const FAN_LABELS = {
@@ -357,6 +400,9 @@ async function refreshHistory() {
     if (!FAIR_TEST_MODE && (!state.participants || state.game?.terminal)) {
       await refreshParticipants();
     }
+    if (!FAIR_TEST_MODE && !state.actionComparisons) {
+      await refreshDecisionAudit();
+    }
   } catch (error) {
     state.history = {
       ...(state.history || emptyHistory()),
@@ -376,6 +422,60 @@ async function refreshParticipants() {
       last_error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+async function refreshDecisionAudit() {
+  if (FAIR_TEST_MODE || state.auditLoading) return;
+  state.auditLoading = true;
+  elements.auditRefreshButton.disabled = true;
+  elements.auditRefreshButton.textContent = "读取中";
+  try {
+    const common = new URLSearchParams();
+    const participantId = elements.auditParticipantFilter.value;
+    const category = elements.auditCategoryFilter.value;
+    if (participantId) common.set("participant_id", participantId);
+    if (category) common.set("category", category);
+
+    const actionQuery = new URLSearchParams(common);
+    actionQuery.set("limit", String(AUDIT_PAGE_SIZE));
+    actionQuery.set("offset", String(state.auditPage * AUDIT_PAGE_SIZE));
+    state.actionComparisons = await api(
+      `/api/history/action-comparisons?${actionQuery.toString()}`
+    );
+
+    const correctionQuery = new URLSearchParams(common);
+    correctionQuery.set("limit", String(AUDIT_PAGE_SIZE));
+    correctionQuery.set("offset", String(state.correctionPage * AUDIT_PAGE_SIZE));
+    const reviewStatus = elements.correctionStatusFilter.value;
+    if (reviewStatus) correctionQuery.set("review_status", reviewStatus);
+    state.corrections = await api(
+      `/api/history/corrections?${correctionQuery.toString()}`
+    );
+    renderCache.actionComparisons = RENDER_CACHE_EMPTY;
+    renderCache.corrections = RENDER_CACHE_EMPTY;
+    elements.auditLastUpdated.textContent = `更新于 ${new Intl.DateTimeFormat("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(new Date())}`;
+  } catch (error) {
+    setError(`决策审计读取失败：${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    state.auditLoading = false;
+    elements.auditRefreshButton.disabled = false;
+    elements.auditRefreshButton.textContent = "刷新";
+    renderDecisionAudit();
+  }
+}
+
+function scheduleDecisionAuditRefresh() {
+  if (FAIR_TEST_MODE || auditRefreshTimer != null) return;
+  auditRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState === "visible" && !state.pending) {
+      void refreshDecisionAudit();
+    }
+  }, AUDIT_REFRESH_MS);
 }
 
 function emptyHistory() {
@@ -427,6 +527,14 @@ function render() {
   if (renderCache.participants !== state.participants) {
     renderParticipantStatistics(state.participants);
     renderCache.participants = state.participants;
+  }
+  if (
+    renderCache.actionComparisons !== state.actionComparisons
+    || renderCache.corrections !== state.corrections
+  ) {
+    renderDecisionAudit();
+    renderCache.actionComparisons = state.actionComparisons;
+    renderCache.corrections = state.corrections;
   }
   if (!game) {
     setControlsDisabled(state.pending);
@@ -863,6 +971,7 @@ function renderModelDecision(decision) {
 }
 
 function actionCandidateLabel(candidate) {
+  if (!candidate) return "--";
   const label = ACTION_LABELS[candidate.action_family] || candidate.action_family;
   return candidate.tile_id == null ? label : `${label} ${tileMeta(candidate.tile_id).label}`;
 }
@@ -955,6 +1064,7 @@ function renderParticipantStatistics(report) {
 
   participants.forEach((participant) => {
     const summary = participant.summary || emptyHistory();
+    const decisionAudit = participant.decision_audit || {};
     const card = document.createElement("article");
     card.className = "participant-stat-card";
     const header = document.createElement("header");
@@ -976,9 +1086,383 @@ function renderParticipantStatistics(report) {
       participantMetric("平均胡番", formatNullableNumber(summary.human_average_win_fan, "番")),
       participantMetric("碰 / 杠", `${summary.human_action_family_counts?.PENG || 0} / ${sumGangActions(summary.human_action_family_counts || {})}`),
       participantMetric("比赛胜负", `${summary.human_match_wins || 0} / ${summary.model_match_wins || 0} / ${summary.tied_matches || 0}`),
+      participantMetric("Top1 一致率", formatPercent(decisionAudit.agreement_rate)),
+      participantMetric("不一致候选", String(decisionAudit.mismatch_count || 0)),
+      participantMetric("碰杠不一致", String(decisionAudit.peng_gang_mismatches || 0)),
+      participantMetric("确认纠错", String(decisionAudit.confirmed_reviews || 0)),
     ].join("");
     card.append(header, metrics);
     elements.participantStatisticsList.appendChild(card);
+  });
+}
+
+function renderDecisionAudit() {
+  if (FAIR_TEST_MODE) return;
+  syncAuditParticipantOptions();
+  const comparisonReport = state.actionComparisons;
+  const correctionReport = state.corrections;
+  const summary = comparisonReport?.summary || {};
+
+  elements.auditTotalActions.textContent = String(summary.total_actions || 0);
+  elements.auditAgreementRate.textContent = formatPercent(summary.agreement_rate);
+  elements.auditMismatchCount.textContent = String(summary.mismatch_count || 0);
+  elements.auditDiscardMismatchCount.textContent = String(summary.discard_mismatches || 0);
+  elements.auditPengGangMismatchCount.textContent = String(summary.peng_gang_mismatches || 0);
+  elements.auditConfirmedCount.textContent = String(summary.confirmed_reviews || 0);
+
+  renderAuditActionTable(comparisonReport);
+  renderCorrectionTable(correctionReport);
+  elements.auditExportCsvButton.disabled = !summary.total_actions;
+  elements.auditExportJsonButton.disabled = !summary.total_actions;
+  const correctionTotal = correctionReport?.pagination?.total || 0;
+  elements.correctionExportCsvButton.disabled = !correctionTotal;
+  elements.correctionExportJsonButton.disabled = !correctionTotal;
+}
+
+function syncAuditParticipantOptions() {
+  const currentValue = elements.auditParticipantFilter.value;
+  const participants = new Map();
+  (state.participants?.participants || []).forEach((participant) => {
+    participants.set(participant.participant_id, participant.display_name);
+  });
+  [
+    ...(state.actionComparisons?.records || []),
+    ...(state.corrections?.records || []),
+  ].forEach((record) => {
+    if (record.participant_id) {
+      participants.set(record.participant_id, record.participant_name || record.participant_id);
+    }
+  });
+
+  elements.auditParticipantFilter.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "全部测试人员";
+  elements.auditParticipantFilter.appendChild(all);
+  [...participants.entries()]
+    .sort((left, right) => left[1].localeCompare(right[1], "zh-CN"))
+    .forEach(([participantId, displayName]) => {
+      const option = document.createElement("option");
+      option.value = participantId;
+      option.textContent = displayName;
+      elements.auditParticipantFilter.appendChild(option);
+    });
+  if ([...elements.auditParticipantFilter.options].some((option) => option.value === currentValue)) {
+    elements.auditParticipantFilter.value = currentValue;
+  }
+}
+
+function renderAuditActionTable(report) {
+  elements.auditActionTableBody.replaceChildren();
+  const records = report?.records || [];
+  const pagination = report?.pagination || { total: 0, offset: 0, returned: 0, has_more: false };
+  elements.auditTableRange.textContent = auditRangeLabel(pagination, "条动作");
+  elements.auditPageLabel.textContent = `第 ${state.auditPage + 1} 页`;
+  elements.auditPreviousButton.disabled = state.auditPage === 0 || state.auditLoading;
+  elements.auditNextButton.disabled = !pagination.has_more || state.auditLoading;
+  if (!records.length) {
+    appendAuditEmptyRow(elements.auditActionTableBody, 9, "尚无上线后的测试员动作记录");
+    return;
+  }
+
+  records.forEach((record) => {
+    const row = document.createElement("tr");
+    if (record.correction_candidate) row.classList.add("mismatch-row");
+    if (record.review_status === "confirmed") row.classList.add("confirmed-row");
+    row.append(
+      auditPersonCell(record),
+      auditSceneIdentityCell(record),
+      auditActionCell(record.selected_action),
+      auditActionCell(record.recommended_action),
+      auditTextCell(formatPercent(record.selected_probability)),
+      auditTextCell(formatPercent(record.recommended_probability)),
+      auditTextCell(formatPercent(record.probability_gap)),
+      auditStatusCell(
+        record.matches_top1 ? "Top1 一致" : "待复核候选",
+        record.matches_top1 ? "not_applicable" : "mismatch"
+      ),
+      auditSceneButtonCell(record)
+    );
+    elements.auditActionTableBody.appendChild(row);
+  });
+}
+
+function renderCorrectionTable(report) {
+  elements.correctionTableBody.replaceChildren();
+  const records = report?.records || [];
+  const pagination = report?.pagination || { total: 0, offset: 0, returned: 0, has_more: false };
+  elements.correctionTableRange.textContent = auditRangeLabel(pagination, "条候选");
+  elements.correctionPageLabel.textContent = `第 ${state.correctionPage + 1} 页`;
+  elements.correctionPreviousButton.disabled = state.correctionPage === 0 || state.auditLoading;
+  elements.correctionNextButton.disabled = !pagination.has_more || state.auditLoading;
+  if (!records.length) {
+    appendAuditEmptyRow(elements.correctionTableBody, 8, "当前筛选条件下没有纠错候选");
+    return;
+  }
+
+  records.forEach((record) => {
+    const row = document.createElement("tr");
+    row.className = record.review_status === "confirmed" ? "confirmed-row" : "mismatch-row";
+    row.append(
+      auditPersonCell(record),
+      auditTextCell(AUDIT_CATEGORY_LABELS[record.category] || record.category),
+      auditActionCell(record.selected_action),
+      auditActionCell(record.recommended_action),
+      auditTextCell(formatPercent(record.probability_gap)),
+      auditStatusCell(
+        AUDIT_REVIEW_LABELS[record.review_status] || record.review_status,
+        record.review_status
+      ),
+      auditTextCell(record.review_note || "--", "note-cell"),
+      auditSceneButtonCell(record, true)
+    );
+    elements.correctionTableBody.appendChild(row);
+  });
+}
+
+function auditRangeLabel(pagination, unit) {
+  const total = Number(pagination.total) || 0;
+  const returned = Number(pagination.returned) || 0;
+  const offset = Number(pagination.offset) || 0;
+  if (!total || !returned) return `0 ${unit}`;
+  return `${offset + 1} - ${offset + returned} / ${total} ${unit}`;
+}
+
+function appendAuditEmptyRow(container, columnCount, message) {
+  const row = document.createElement("tr");
+  row.className = "audit-empty-row";
+  const cell = document.createElement("td");
+  cell.colSpan = columnCount;
+  cell.textContent = message;
+  row.appendChild(cell);
+  container.appendChild(row);
+}
+
+function auditPersonCell(record) {
+  const cell = document.createElement("td");
+  const wrapper = document.createElement("span");
+  wrapper.className = "person-cell";
+  const name = document.createElement("strong");
+  const time = document.createElement("small");
+  name.textContent = record.participant_name || "未命名测试员";
+  time.textContent = formatHistoryDate(record.recorded_at, true);
+  wrapper.append(name, time);
+  cell.appendChild(wrapper);
+  return cell;
+}
+
+function auditSceneIdentityCell(record) {
+  const cell = document.createElement("td");
+  const wrapper = document.createElement("span");
+  wrapper.className = "scene-cell";
+  const primary = document.createElement("strong");
+  const secondary = document.createElement("small");
+  primary.textContent = `第 ${record.hand_number} 局 · 决策 ${record.decision_index}`;
+  secondary.textContent = `Seed ${record.seed} · ${PHASE_LABELS[record.phase] || record.phase}`;
+  wrapper.append(primary, secondary);
+  cell.appendChild(wrapper);
+  return cell;
+}
+
+function auditActionCell(action) {
+  const cell = document.createElement("td");
+  const wrapper = document.createElement("span");
+  wrapper.className = "scene-cell";
+  const primary = document.createElement("strong");
+  const secondary = document.createElement("small");
+  primary.textContent = action ? actionCandidateLabel(action) : "--";
+  secondary.textContent = action ? `动作 #${action.action_id}` : "";
+  wrapper.append(primary, secondary);
+  cell.appendChild(wrapper);
+  return cell;
+}
+
+function auditTextCell(value, className = "") {
+  const cell = document.createElement("td");
+  if (className) cell.className = className;
+  cell.textContent = String(value);
+  return cell;
+}
+
+function auditStatusCell(label, status) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `audit-status ${status}`;
+  badge.textContent = label;
+  cell.appendChild(badge);
+  return cell;
+}
+
+function auditSceneButtonCell(record, review = false) {
+  const cell = document.createElement("td");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "scene-button";
+  button.textContent = review ? "查看并复核" : "查看牌面";
+  button.addEventListener("click", () => openAuditScene(record));
+  cell.appendChild(button);
+  return cell;
+}
+
+function openAuditScene(record) {
+  state.currentAuditRecord = record;
+  const scene = record.scene || {};
+  const human = (scene.players || []).find((player) => player.role === "human") || {};
+  const model = (scene.players || []).find((player) => player.role === "model") || {};
+  elements.auditSceneKicker.textContent = record.correction_candidate
+    ? "纠错候选 · 决策前牌面"
+    : "Top1 一致 · 决策前牌面";
+  elements.auditSceneTitle.textContent = `${record.participant_name} · 第 ${record.hand_number} 局`;
+  elements.auditSceneMeta.textContent = [
+    `Seed ${record.seed}`,
+    `决策 ${record.decision_index}`,
+    PHASE_LABELS[record.phase] || record.phase,
+    AUDIT_CATEGORY_LABELS[record.category] || record.category,
+  ].join(" · ");
+  elements.auditSceneSelectedAction.textContent = actionCandidateLabel(record.selected_action);
+  elements.auditSceneSelectedProbability.textContent = `模型概率 ${formatPercent(record.selected_probability)}`;
+  elements.auditSceneRecommendedAction.textContent = actionCandidateLabel(record.recommended_action);
+  elements.auditSceneRecommendedProbability.textContent = `Top1 概率 ${formatPercent(record.recommended_probability)}`;
+  elements.auditSceneProbabilityGap.textContent = formatPercent(record.probability_gap);
+
+  renderMelds(elements.auditSceneModelMelds, model.melds || []);
+  elements.auditSceneModelHand.replaceChildren();
+  const modelHandCount = Number(model.hand_count) || 0;
+  elements.auditSceneModelCount.textContent = `${modelHandCount} 张暗牌`;
+  for (let index = 0; index < modelHandCount; index += 1) {
+    elements.auditSceneModelHand.appendChild(createTileBack());
+  }
+  renderMelds(elements.auditSceneHumanMelds, human.melds || []);
+  renderAuditHand(elements.auditSceneHumanHand, human.hand || [], record);
+  renderAuditRiver(elements.auditSceneModelRiver, model.discards || [], scene, 1);
+  renderAuditRiver(elements.auditSceneHumanRiver, human.discards || [], scene, 0);
+  elements.auditSceneTableStatus.textContent = [
+    PHASE_LABELS[scene.phase] || scene.phase || "决策阶段",
+    `牌墙 ${scene.remaining_wall_count ?? "--"} 张`,
+    scene.focus_tile == null ? "无待响应牌" : `待响应 ${tileMeta(scene.focus_tile).label}`,
+  ].join(" · ");
+  renderAuditLegalActions(record);
+
+  elements.auditReviewSection.hidden = !record.correction_candidate;
+  elements.auditReviewCurrentStatus.textContent = AUDIT_REVIEW_LABELS[record.review_status] || record.review_status;
+  elements.auditReviewCurrentStatus.className = `audit-status ${record.review_status}`;
+  elements.auditReviewNote.value = record.review_note || "";
+  if (!elements.auditSceneDialog.open) elements.auditSceneDialog.showModal();
+}
+
+function renderAuditHand(container, tiles, record) {
+  container.replaceChildren();
+  const selectedTile = record.selected_action?.action_family === "DISCARD"
+    ? record.selected_action.tile_id
+    : null;
+  const recommendedTile = record.recommended_action?.action_family === "DISCARD"
+    ? record.recommended_action.tile_id
+    : null;
+  tiles.forEach((tileId) => {
+    const tile = createTile(tileId);
+    if (tileId === selectedTile) tile.classList.add("audit-selected-tile");
+    if (tileId === recommendedTile) tile.classList.add("audit-recommended-tile");
+    container.appendChild(tile);
+  });
+}
+
+function renderAuditRiver(container, discards, scene, playerId) {
+  container.replaceChildren();
+  discards.forEach((tileId, index) => {
+    const tile = createTile(tileId, { small: true });
+    const isFocus = scene.last_discard_player === playerId
+      && scene.last_discard_tile === tileId
+      && index === discards.length - 1;
+    if (isFocus) tile.classList.add("last-discard");
+    container.appendChild(tile);
+  });
+}
+
+function renderAuditLegalActions(record) {
+  elements.auditSceneLegalActions.replaceChildren();
+  const actions = record.legal_action_probabilities || record.scene?.legal_actions || [];
+  actions.forEach((action, index) => {
+    const row = document.createElement("div");
+    row.className = [
+      "audit-legal-action",
+      action.action_id === record.selected_action?.action_id ? "selected" : "",
+      action.action_id === record.recommended_action?.action_id ? "recommended" : "",
+    ].filter(Boolean).join(" ");
+    const rank = document.createElement("span");
+    const label = document.createElement("strong");
+    const probability = document.createElement("b");
+    rank.className = "rank";
+    rank.textContent = `#${index + 1}`;
+    label.textContent = actionCandidateLabel(action);
+    probability.textContent = formatPercent(action.probability);
+    row.append(rank, label, probability);
+    elements.auditSceneLegalActions.appendChild(row);
+  });
+}
+
+async function saveAuditReview(status) {
+  const record = state.currentAuditRecord;
+  if (!record?.correction_candidate || state.auditLoading) return;
+  setAuditReviewButtonsDisabled(true);
+  try {
+    const updated = await api(
+      `/api/history/action-comparisons/${record.comparison_id}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify({ status, note: elements.auditReviewNote.value }),
+      }
+    );
+    state.currentAuditRecord = updated;
+    openAuditScene(updated);
+    await refreshDecisionAudit();
+  } catch (error) {
+    setError(`复核保存失败：${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    setAuditReviewButtonsDisabled(false);
+  }
+}
+
+function setAuditReviewButtonsDisabled(disabled) {
+  document.querySelectorAll("[data-review-status]").forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+async function exportDecisionAudit(mismatchOnly, format) {
+  const label = mismatchOnly ? "corrections" : "action_comparisons";
+  await withPending("正在导出决策审计", async () => {
+    const payload = await api(
+      `/api/history/action-comparisons/export?mismatch_only=${String(mismatchOnly)}`
+    );
+    if (format === "json") {
+      downloadBlob(
+        JSON.stringify(payload, null, 2),
+        `nanchong_${label}_${historyExportDate()}.json`,
+        "application/json;charset=utf-8"
+      );
+      return;
+    }
+    const columns = [
+      "history_id", "comparison_id", "recorded_at", "participant_id",
+      "participant_name", "session_id", "hand_number", "seed", "decision_index",
+      "phase", "category", "selected_action", "recommended_action",
+      "selected_probability", "recommended_probability", "probability_gap",
+      "matches_top1", "review_status", "review_note", "reviewed_at",
+    ];
+    const rows = [columns.join(",")];
+    (payload.records || []).forEach((record) => {
+      const flat = {
+        ...record,
+        selected_action: actionCandidateLabel(record.selected_action),
+        recommended_action: actionCandidateLabel(record.recommended_action),
+      };
+      rows.push(columns.map((column) => csvCell(flat[column])).join(","));
+    });
+    downloadBlob(
+      `\ufeff${rows.join("\r\n")}`,
+      `nanchong_${label}_${historyExportDate()}.csv`,
+      "text/csv;charset=utf-8"
+    );
   });
 }
 
@@ -1349,6 +1833,52 @@ elements.exportJsonButton.addEventListener("click", exportJson);
 elements.historyExportCsvButton.addEventListener("click", exportHistoryCsv);
 elements.historyExportJsonButton.addEventListener("click", exportHistoryJson);
 elements.participantExportJsonButton.addEventListener("click", exportParticipantStatistics);
+elements.auditRefreshButton.addEventListener("click", () => refreshDecisionAudit());
+elements.auditParticipantFilter.addEventListener("change", () => {
+  state.auditPage = 0;
+  state.correctionPage = 0;
+  void refreshDecisionAudit();
+});
+elements.auditCategoryFilter.addEventListener("change", () => {
+  state.auditPage = 0;
+  state.correctionPage = 0;
+  void refreshDecisionAudit();
+});
+elements.correctionStatusFilter.addEventListener("change", () => {
+  state.correctionPage = 0;
+  void refreshDecisionAudit();
+});
+elements.auditPreviousButton.addEventListener("click", () => {
+  if (state.auditPage <= 0) return;
+  state.auditPage -= 1;
+  void refreshDecisionAudit();
+});
+elements.auditNextButton.addEventListener("click", () => {
+  if (!state.actionComparisons?.pagination?.has_more) return;
+  state.auditPage += 1;
+  void refreshDecisionAudit();
+});
+elements.correctionPreviousButton.addEventListener("click", () => {
+  if (state.correctionPage <= 0) return;
+  state.correctionPage -= 1;
+  void refreshDecisionAudit();
+});
+elements.correctionNextButton.addEventListener("click", () => {
+  if (!state.corrections?.pagination?.has_more) return;
+  state.correctionPage += 1;
+  void refreshDecisionAudit();
+});
+elements.auditExportCsvButton.addEventListener("click", () => exportDecisionAudit(false, "csv"));
+elements.auditExportJsonButton.addEventListener("click", () => exportDecisionAudit(false, "json"));
+elements.correctionExportCsvButton.addEventListener("click", () => exportDecisionAudit(true, "csv"));
+elements.correctionExportJsonButton.addEventListener("click", () => exportDecisionAudit(true, "json"));
+elements.auditSceneCloseButton.addEventListener("click", () => elements.auditSceneDialog.close());
+document.querySelectorAll("[data-review-status]").forEach((button) => {
+  button.addEventListener("click", () => saveAuditReview(button.dataset.reviewStatus));
+});
+elements.auditSceneDialog.addEventListener("close", () => {
+  state.currentAuditRecord = null;
+});
 elements.modelHandToggle.addEventListener("change", () => {
   if (FAIR_TEST_MODE) return;
   state.showModelHand = elements.modelHandToggle.checked;
@@ -1379,6 +1909,7 @@ async function boot() {
     await ensureParticipant();
     await withPending("正在载入 Linear-Danger 模型", restoreOrNewMatch, true);
     scheduleTileFacePreload();
+    scheduleDecisionAuditRefresh();
   } catch (error) {
     elements.loadingLayer.hidden = true;
     setError(error instanceof Error ? error.message : String(error));
