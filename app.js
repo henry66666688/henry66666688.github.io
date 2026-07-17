@@ -99,6 +99,7 @@ const elements = Object.fromEntries(
     "auditSceneLegalActions", "auditReviewSection", "auditReviewCurrentStatus",
     "auditReviewNote",
     "resultDialog", "resultKicker", "resultTitle", "resultSummary", "fanDetails",
+    "resultModelHandCount", "resultModelMelds", "resultModelHand",
     "dialogNextHandButton", "dialogCloseButton", "loadingLayer", "loadingText",
   ].map((id) => [id, document.getElementById(id)])
 );
@@ -573,7 +574,10 @@ function render() {
   const modelHandCount = Number.isInteger(model.hand_count)
     ? model.hand_count
     : model.hand.length;
-  elements.modelVisibilityMark.textContent = FAIR_TEST_MODE
+  const revealModelHand = Boolean(game.terminal) || state.showModelHand;
+  elements.modelVisibilityMark.textContent = game.terminal
+    ? `本局结束 · 模型已亮牌 ${modelHandCount} 张`
+    : FAIR_TEST_MODE
     ? `公平对局 · ${modelHandCount} 张暗牌`
     : state.showModelHand
     ? "手牌已公开 · 仅供分析"
@@ -581,7 +585,7 @@ function render() {
 
   renderMelds(elements.modelMelds, model.melds);
   renderMelds(elements.humanMelds, human.melds);
-  renderHand(elements.modelHand, model, [], { hidden: !state.showModelHand });
+  renderHand(elements.modelHand, model, [], { hidden: !revealModelHand });
   renderHand(elements.humanHand, human, game.legal_actions, {
     recommendations: game.human_recommendation?.discard_candidates || [],
   });
@@ -1670,6 +1674,15 @@ function maybeShowResult(game) {
       : `${WIN_SOURCE_LABELS[settlement.win_source] || "胡牌"} · ${settlement.total_additive_fan} 番 · 本局 ${formatSigned(score)}`;
   }
   renderFanDetails(settlement);
+  const model = game.players.find((player) => player.role === "model");
+  const modelHandCount = Number.isInteger(model?.hand_count)
+    ? model.hand_count
+    : model?.hand?.length || 0;
+  elements.resultModelHandCount.textContent = `${modelHandCount} 张已亮明`;
+  renderMelds(elements.resultModelMelds, model?.melds || []);
+  renderHand(elements.resultModelHand, model || { hand: [], hand_count: 0 }, [], {
+    hidden: false,
+  });
   elements.dialogNextHandButton.hidden = game.match.match_complete;
   elements.dialogNextHandButton.disabled = game.match.match_complete;
   if (!elements.resultDialog.open) elements.resultDialog.showModal();

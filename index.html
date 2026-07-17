@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light" />
   <title>南充麻将 1V1 · Linear-Danger</title>
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./styles.css?v=14" />
+  <link rel="stylesheet" href="./styles.css?v=15" />
 </head>
 <body>
   <div id="participantGate" class="participant-gate" hidden>
@@ -423,6 +423,14 @@
       <h2 id="resultTitle">--</h2>
       <p id="resultSummary"></p>
       <dl id="fanDetails" class="fan-details"></dl>
+      <section class="result-reveal" aria-label="模型终局亮牌">
+        <header>
+          <strong>模型终局手牌</strong>
+          <span id="resultModelHandCount">已亮牌</span>
+        </header>
+        <div id="resultModelMelds" class="meld-row"></div>
+        <div id="resultModelHand" class="hand-row"></div>
+      </section>
       <div class="result-actions">
         <button id="dialogNextHandButton" class="button primary" type="button">下一局</button>
         <button id="dialogCloseButton" class="button secondary" type="button">查看牌桌</button>
@@ -491,6 +499,6 @@
   </div>
 
   <script src="./public-config.js?v=1"></script>
-  <script src="./app.js?v=14"></script>
+  <script src="./app.js?v=15"></script>
 </body>
 </html>
