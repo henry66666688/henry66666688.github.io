@@ -1161,21 +1161,21 @@ function renderAuditActionTable(report) {
   elements.auditPreviousButton.disabled = state.auditPage === 0 || state.auditLoading;
   elements.auditNextButton.disabled = !pagination.has_more || state.auditLoading;
   if (!records.length) {
-    appendAuditEmptyRow(elements.auditActionTableBody, 9, "尚无上线后的测试员动作记录");
+    appendAuditEmptyRow(elements.auditActionTableBody, 12, "尚无上线后的测试员动作记录");
     return;
   }
 
   records.forEach((record) => {
+    const topActions = auditTopActions(record);
     const row = document.createElement("tr");
     if (record.correction_candidate) row.classList.add("mismatch-row");
     if (record.review_status === "confirmed") row.classList.add("confirmed-row");
     row.append(
       auditPersonCell(record),
       auditSceneIdentityCell(record),
-      auditActionCell(record.selected_action),
-      auditActionCell(record.recommended_action),
-      auditTextCell(formatPercent(record.selected_probability)),
-      auditTextCell(formatPercent(record.recommended_probability)),
+      auditSelectedActionCell(record),
+      auditSelectedRankCell(record),
+      ...Array.from({ length: 5 }, (_, index) => auditRankedActionCell(topActions[index], index + 1)),
       auditTextCell(formatPercent(record.probability_gap)),
       auditStatusCell(
         record.matches_top1 ? "Top1 一致" : "待复核候选",
@@ -1196,18 +1196,20 @@ function renderCorrectionTable(report) {
   elements.correctionPreviousButton.disabled = state.correctionPage === 0 || state.auditLoading;
   elements.correctionNextButton.disabled = !pagination.has_more || state.auditLoading;
   if (!records.length) {
-    appendAuditEmptyRow(elements.correctionTableBody, 8, "当前筛选条件下没有纠错候选");
+    appendAuditEmptyRow(elements.correctionTableBody, 13, "当前筛选条件下没有纠错候选");
     return;
   }
 
   records.forEach((record) => {
+    const topActions = auditTopActions(record);
     const row = document.createElement("tr");
     row.className = record.review_status === "confirmed" ? "confirmed-row" : "mismatch-row";
     row.append(
       auditPersonCell(record),
       auditTextCell(AUDIT_CATEGORY_LABELS[record.category] || record.category),
-      auditActionCell(record.selected_action),
-      auditActionCell(record.recommended_action),
+      auditSelectedActionCell(record),
+      auditSelectedRankCell(record),
+      ...Array.from({ length: 5 }, (_, index) => auditRankedActionCell(topActions[index], index + 1)),
       auditTextCell(formatPercent(record.probability_gap)),
       auditStatusCell(
         AUDIT_REVIEW_LABELS[record.review_status] || record.review_status,
@@ -1275,6 +1277,55 @@ function auditActionCell(action) {
   wrapper.append(primary, secondary);
   cell.appendChild(wrapper);
   return cell;
+}
+
+function auditRankedActions(record) {
+  const actions = record.legal_action_probabilities || record.scene?.legal_actions || [];
+  return [...actions].sort(
+    (left, right) => Number(right.probability || 0) - Number(left.probability || 0)
+  );
+}
+
+function auditTopActions(record, count = 5) {
+  return auditRankedActions(record).slice(0, count);
+}
+
+function auditSelectedRank(record) {
+  const selectedActionId = record.selected_action?.action_id;
+  if (selectedActionId == null) return null;
+  const index = auditRankedActions(record).findIndex(
+    (action) => action.action_id === selectedActionId
+  );
+  return index < 0 ? null : index + 1;
+}
+
+function auditSelectedActionCell(record) {
+  const cell = auditActionCell(record.selected_action);
+  const secondary = cell.querySelector("small");
+  if (secondary) {
+    secondary.textContent = `模型概率 ${formatPercent(record.selected_probability)}`;
+  }
+  cell.classList.add("selected-action-cell");
+  return cell;
+}
+
+function auditRankedActionCell(action, rank) {
+  const cell = auditActionCell(action);
+  cell.classList.add("ranked-action-cell");
+  const secondary = cell.querySelector("small");
+  if (secondary) {
+    secondary.textContent = action
+      ? `概率 ${formatPercent(action.probability)}`
+      : `该局面无 Top${rank}`;
+  }
+  return cell;
+}
+
+function auditSelectedRankCell(record) {
+  const rank = auditSelectedRank(record);
+  if (rank == null) return auditStatusCell("未记录", "uncertain");
+  if (rank <= 5) return auditStatusCell(`Top${rank}`, "rank-top5");
+  return auditStatusCell(`Top5 外 · #${rank}`, "rank-outside");
 }
 
 function auditTextCell(value, className = "") {
@@ -1380,7 +1431,7 @@ function renderAuditRiver(container, discards, scene, playerId) {
 
 function renderAuditLegalActions(record) {
   elements.auditSceneLegalActions.replaceChildren();
-  const actions = record.legal_action_probabilities || record.scene?.legal_actions || [];
+  const actions = auditRankedActions(record);
   actions.forEach((action, index) => {
     const row = document.createElement("div");
     row.className = [
@@ -1445,17 +1496,29 @@ async function exportDecisionAudit(mismatchOnly, format) {
     const columns = [
       "history_id", "comparison_id", "recorded_at", "participant_id",
       "participant_name", "session_id", "hand_number", "seed", "decision_index",
-      "phase", "category", "selected_action", "recommended_action",
-      "selected_probability", "recommended_probability", "probability_gap",
+      "phase", "category", "selected_action", "selected_probability",
+      "selected_rank", "selected_in_top5", "recommended_action",
+      "recommended_probability", "top1_action", "top1_probability",
+      "top2_action", "top2_probability", "top3_action", "top3_probability",
+      "top4_action", "top4_probability", "top5_action", "top5_probability",
+      "probability_gap",
       "matches_top1", "review_status", "review_note", "reviewed_at",
     ];
     const rows = [columns.join(",")];
     (payload.records || []).forEach((record) => {
+      const topActions = auditTopActions(record);
+      const selectedRank = auditSelectedRank(record);
       const flat = {
         ...record,
         selected_action: actionCandidateLabel(record.selected_action),
         recommended_action: actionCandidateLabel(record.recommended_action),
+        selected_rank: selectedRank,
+        selected_in_top5: selectedRank != null && selectedRank <= 5,
       };
+      topActions.forEach((action, index) => {
+        flat[`top${index + 1}_action`] = actionCandidateLabel(action);
+        flat[`top${index + 1}_probability`] = action.probability;
+      });
       rows.push(columns.map((column) => csvCell(flat[column])).join(","));
     });
     downloadBlob(

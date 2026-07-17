@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light" />
   <title>南充麻将 1V1 · Linear-Danger</title>
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./styles.css?v=13" />
+  <link rel="stylesheet" href="./styles.css?v=14" />
 </head>
 <body>
   <div id="participantGate" class="participant-gate" hidden>
@@ -318,7 +318,7 @@
         <div>
           <span>测试决策审计</span>
           <h2 id="decisionAuditTitle">玩家动作与模型建议对比</h2>
-          <p>不一致动作先记为待复核候选，查看当时牌面后再判断是否为真实纠错。</p>
+          <p>玩家选择按模型概率与 Top1 至 Top5 同屏比较；不一致动作需查看当时牌面后再判断是否为真实纠错。</p>
         </div>
         <div class="audit-header-actions">
           <span id="auditLastUpdated">尚未读取</span>
@@ -371,8 +371,9 @@
         <div class="audit-table-scroll">
           <table class="audit-table">
             <thead><tr>
-              <th>时间 / 测试员</th><th>局面</th><th>玩家动作</th><th>模型 Top1</th>
-              <th>玩家概率</th><th>Top1 概率</th><th>概率差</th><th>对比</th><th>牌面</th>
+              <th>时间 / 测试员</th><th>局面</th><th>玩家选择<br />模型概率</th><th>玩家排名</th>
+              <th>模型 Top1</th><th>模型 Top2</th><th>模型 Top3</th><th>模型 Top4</th><th>模型 Top5</th>
+              <th>与 Top1 差</th><th>对比</th><th>牌面</th>
             </tr></thead>
             <tbody id="auditActionTableBody"></tbody>
           </table>
@@ -405,8 +406,9 @@
         <div class="audit-table-scroll">
           <table class="audit-table correction-table">
             <thead><tr>
-              <th>时间 / 测试员</th><th>类型</th><th>玩家动作</th><th>模型 Top1</th>
-              <th>概率差</th><th>复核状态</th><th>备注</th><th>复核牌面</th>
+              <th>时间 / 测试员</th><th>类型</th><th>玩家选择<br />模型概率</th><th>玩家排名</th>
+              <th>模型 Top1</th><th>模型 Top2</th><th>模型 Top3</th><th>模型 Top4</th><th>模型 Top5</th>
+              <th>与 Top1 差</th><th>复核状态</th><th>备注</th><th>复核牌面</th>
             </tr></thead>
             <tbody id="correctionTableBody"></tbody>
           </table>
@@ -489,6 +491,6 @@
   </div>
 
   <script src="./public-config.js?v=1"></script>
-  <script src="./app.js?v=13"></script>
+  <script src="./app.js?v=14"></script>
 </body>
 </html>

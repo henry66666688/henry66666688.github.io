@@ -1263,7 +1263,7 @@ button.tile.selected-discard:focus-visible {
 
 .audit-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 1540px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 10px;
@@ -1310,6 +1310,18 @@ button.tile.selected-discard:focus-visible {
   font-size: 8px;
 }
 
+.audit-table .selected-action-cell {
+  background: rgb(240 182 66 / 10%);
+}
+
+.audit-table .ranked-action-cell:nth-child(5) {
+  background: rgb(85 167 206 / 10%);
+}
+
+.audit-table .ranked-action-cell strong {
+  white-space: nowrap;
+}
+
 .audit-status {
   display: inline-flex;
   align-items: center;
@@ -1344,6 +1356,18 @@ button.tile.selected-discard:focus-visible {
   border-color: #d3b36c;
   background: #fff8e8;
   color: #755819;
+}
+
+.audit-status.rank-top5 {
+  border-color: #71a993;
+  background: #eaf6f1;
+  color: #155c45;
+}
+
+.audit-status.rank-outside {
+  border-color: #d69a8f;
+  background: #fff0ed;
+  color: #8c2e27;
 }
 
 .audit-empty-row td {
