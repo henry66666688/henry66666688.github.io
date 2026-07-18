@@ -2,11 +2,11 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <title>南充麻将 1V1 · Linear-Danger</title>
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./styles.css?v=15" />
+  <link rel="stylesheet" href="./styles.css?v=18" />
 </head>
 <body>
   <div id="participantGate" class="participant-gate" hidden>
@@ -48,6 +48,13 @@
           <span class="toggle-track" aria-hidden="true"><i></i></span>
           <span>推荐标注</span>
         </label>
+        <button
+          id="mobileStatsButton"
+          class="button secondary mobile-only mobile-stats-button"
+          type="button"
+          aria-controls="inspectionPanel"
+          aria-expanded="false"
+        >数据</button>
         <button id="nextHandButton" class="button secondary" type="button">下一局</button>
         <button id="newMatchButton" class="button primary" type="button">新比赛</button>
       </div>
@@ -192,7 +199,14 @@
         </section>
       </section>
 
-      <aside class="inspection-panel" aria-label="对局分析面板">
+      <aside id="inspectionPanel" class="inspection-panel" aria-label="对局分析面板">
+        <div class="mobile-panel-heading mobile-only">
+          <div>
+            <span>比赛记录</span>
+            <strong>对局数据</strong>
+          </div>
+          <button id="mobileStatsCloseButton" class="button secondary" type="button">关闭</button>
+        </div>
         <section class="inspection-section recommendation-section analysis-only-section">
           <header>
             <h2>你的出牌建议</h2>
@@ -311,6 +325,13 @@
           <ol id="actionLog" class="action-log"></ol>
         </section>
       </aside>
+      <button
+        id="mobilePanelBackdrop"
+        class="mobile-panel-backdrop"
+        type="button"
+        aria-label="关闭对局数据"
+        hidden
+      ></button>
     </main>
 
     <section id="decisionAuditPanel" class="decision-audit-panel analysis-only-section" aria-labelledby="decisionAuditTitle">
@@ -499,6 +520,6 @@
   </div>
 
   <script src="./public-config.js?v=1"></script>
-  <script src="./app.js?v=15"></script>
+  <script src="./app.js?v=18"></script>
 </body>
 </html>

@@ -19,6 +19,11 @@ const TILE_ASSET_ROOT = String(
 const DISCARD_DOUBLE_CLICK_MS = 450;
 const AUDIT_PAGE_SIZE = 100;
 const AUDIT_REFRESH_MS = 20_000;
+const MOBILE_LAYOUT_MEDIA = [
+  "(max-width: 700px)",
+  "(orientation: landscape) and (max-height: 520px) and (max-width: 950px)",
+].join(", ");
+const mobileLayoutQuery = window.matchMedia(MOBILE_LAYOUT_MEDIA);
 
 const state = {
   game: null,
@@ -67,6 +72,7 @@ const elements = Object.fromEntries(
     "humanRecommendationProbability", "humanRecommendationValue",
     "humanDiscardProbabilityMass", "humanRecommendationList",
     "newMatchButton", "nextHandButton", "confirmDiscardButton", "modelHandToggle", "recommendationProbabilityToggle",
+    "mobileStatsButton", "mobileStatsCloseButton", "mobilePanelBackdrop", "inspectionPanel",
     "modelVisibilityMark",
     "humanSelfDraws", "modelSelfDraws", "humanDealIns", "modelDealIns",
     "averageHuRound", "humanTenpaiRound", "modelTenpaiRound", "averageWinFan",
@@ -195,10 +201,15 @@ async function api(path, options = {}) {
       headers["X-Participant-Token"] = state.participant.participant_token;
     }
   }
-  const response = await fetch(`${API_BASE}${mappedPath}`, {
-    headers,
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${mappedPath}`, {
+      headers,
+      ...options,
+    });
+  } catch (_error) {
+    throw new Error("模型服务暂时无法连接，请检查网络后重试");
+  }
   let payload = null;
   try {
     payload = await response.json();
@@ -337,6 +348,7 @@ async function restoreOrNewMatch() {
 }
 
 async function newMatch() {
+  setMobileStatsOpen(false);
   await withPending("正在创建新比赛", async () => {
     closeResultDialog();
     state.shownResultKey = null;
@@ -356,6 +368,7 @@ async function createMatchRequest() {
 
 async function nextHand() {
   if (!state.game || state.game.match.match_complete || !state.game.terminal) return;
+  setMobileStatsOpen(false);
   await withPending("模型正在准备下一局", async () => {
     closeResultDialog();
     state.game = await api(`/api/matches/${state.game.session_id}/next-hand`, {
@@ -1867,6 +1880,14 @@ function setError(message) {
   elements.errorBanner.textContent = message;
 }
 
+function setMobileStatsOpen(open) {
+  const active = Boolean(open) && mobileLayoutQuery.matches;
+  document.body.classList.toggle("mobile-stats-open", active);
+  elements.mobileStatsButton.setAttribute("aria-expanded", String(active));
+  elements.mobilePanelBackdrop.hidden = !active;
+  if (active) elements.mobileStatsCloseButton.focus();
+}
+
 function closeResultDialog() {
   if (elements.resultDialog.open) elements.resultDialog.close();
 }
@@ -1902,6 +1923,22 @@ function escapeHtml(value) {
 elements.newMatchButton.addEventListener("click", newMatch);
 elements.nextHandButton.addEventListener("click", nextHand);
 elements.confirmDiscardButton.addEventListener("click", confirmSelectedDiscard);
+elements.mobileStatsButton.addEventListener("click", () => setMobileStatsOpen(true));
+elements.mobileStatsCloseButton.addEventListener("click", () => setMobileStatsOpen(false));
+elements.mobilePanelBackdrop.addEventListener("click", () => setMobileStatsOpen(false));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.body.classList.contains("mobile-stats-open")) {
+    setMobileStatsOpen(false);
+  }
+});
+const handleMobileLayoutChange = (event) => {
+  if (!event.matches) setMobileStatsOpen(false);
+};
+if (typeof mobileLayoutQuery.addEventListener === "function") {
+  mobileLayoutQuery.addEventListener("change", handleMobileLayoutChange);
+} else {
+  mobileLayoutQuery.addListener(handleMobileLayoutChange);
+}
 elements.dialogNextHandButton.addEventListener("click", nextHand);
 elements.dialogCloseButton.addEventListener("click", closeResultDialog);
 elements.exportCsvButton.addEventListener("click", exportCsv);
