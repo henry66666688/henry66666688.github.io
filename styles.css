@@ -40,6 +40,91 @@ body {
   display: none;
 }
 
+.orientation-control {
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid #bdb6a7;
+  border-radius: 6px;
+  background: #eee9dc;
+}
+
+.orientation-segment {
+  min-width: 48px;
+  min-height: 34px;
+  padding: 5px 7px;
+  border: 0;
+  border-right: 1px solid #c9c1b2;
+  background: transparent;
+  color: #4f5d55;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.orientation-segment:last-child {
+  border-right: 0;
+}
+
+.orientation-segment.active {
+  background: var(--felt-dark);
+  color: #fff;
+}
+
+.orientation-segment:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.orientation-notice {
+  width: min(420px, calc(100% - 24px));
+  min-height: 64px;
+  position: fixed;
+  z-index: 150;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  padding: 10px 10px 10px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #ddbd73;
+  border-radius: 8px;
+  background: #fff9e8;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  transform: translateX(-50%);
+}
+
+.orientation-notice[hidden] {
+  display: none;
+}
+
+.orientation-notice > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.orientation-notice strong {
+  font-size: 13px;
+}
+
+.orientation-notice span {
+  color: #655d4e;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.orientation-notice button {
+  min-width: 64px;
+  min-height: 38px;
+  padding: 6px 9px;
+  border: 1px solid #b39146;
+  border-radius: 6px;
+  background: #fffdf7;
+  color: var(--ink);
+  font-weight: 700;
+}
+
 button,
 input {
   font: inherit;
@@ -1146,6 +1231,16 @@ button.tile.selected-discard:focus-visible {
     width: 100%;
   }
 
+  .brand-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .orientation-control {
+    margin-left: auto;
+    display: flex;
+  }
+
   .brand-tile {
     width: 28px;
     height: 36px;
@@ -1158,7 +1253,7 @@ button.tile.selected-discard:focus-visible {
   }
 
   .brand p {
-    max-width: calc(100vw - 58px);
+    max-width: calc(100vw - 164px);
     margin-top: 2px;
     font-size: 9px;
   }
@@ -3067,6 +3162,23 @@ body.hide-recommendation-probabilities .recommendation-row {
     gap: 7px;
   }
 
+  .brand-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .orientation-control {
+    margin-left: auto;
+    display: flex;
+  }
+
+  .orientation-segment {
+    min-width: 46px;
+    min-height: 34px;
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
   .brand-tile {
     width: 26px;
     height: 34px;
@@ -3333,5 +3445,330 @@ body.hide-recommendation-probabilities .recommendation-row {
   .result-dialog {
     width: min(680px, calc(100% - 16px));
     max-height: calc(100dvh - 8px);
+  }
+}
+
+/*
+ * iPhone Safari cannot reliably lock screen orientation. In portrait-lock mode,
+ * rotate the application viewport and reuse the compact landscape table.
+ */
+@media (orientation: portrait) and (max-width: 700px) {
+  html.virtual-landscape-root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--felt-dark);
+  }
+
+  body.virtual-landscape {
+    width: 100dvh;
+    height: 100dvw;
+    max-width: none;
+    min-height: 100dvw;
+    position: fixed;
+    inset: 0 auto auto 0;
+    overflow: hidden;
+    background: var(--felt-dark);
+    transform: rotate(90deg) translateY(-100%);
+    transform-origin: top left;
+    --tile-w: clamp(30px, calc((100dvh - 44px) / 14), 38px);
+    --tile-h: clamp(43px, calc((100dvh - 44px) / 9.8), 54px);
+    --river-w: 22px;
+    --river-h: 31px;
+  }
+
+  body.virtual-landscape .app-shell {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+  }
+
+  body.virtual-landscape .topbar {
+    min-height: 48px;
+    padding: 4px 8px;
+    display: grid;
+    grid-template-columns: minmax(250px, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+
+  body.virtual-landscape .brand {
+    width: auto;
+    gap: 7px;
+  }
+
+  body.virtual-landscape .brand-tile {
+    width: 26px;
+    height: 34px;
+    border-bottom-width: 3px;
+    font-size: 16px;
+  }
+
+  body.virtual-landscape .brand h1 {
+    font-size: 14px;
+  }
+
+  body.virtual-landscape .brand p {
+    max-width: 210px;
+    margin-top: 1px;
+    font-size: 8px;
+  }
+
+  body.virtual-landscape .orientation-segment {
+    min-width: 46px;
+    min-height: 34px;
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
+  body.virtual-landscape .top-actions {
+    width: auto;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+
+  body.virtual-landscape .match-length-control > span,
+  body.virtual-landscape .reveal-toggle > span:last-child {
+    display: none;
+  }
+
+  body.virtual-landscape .match-length-control,
+  body.virtual-landscape.fair-tester-mode .match-length-control,
+  body.virtual-landscape.fair-tester-mode .mobile-stats-button,
+  body.virtual-landscape.fair-tester-mode #nextHandButton,
+  body.virtual-landscape.fair-tester-mode #newMatchButton {
+    grid-column: auto;
+  }
+
+  body.virtual-landscape .segment,
+  body.virtual-landscape .top-actions .button {
+    min-width: 58px;
+    min-height: 36px;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  body.virtual-landscape .score-strip {
+    min-height: 42px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  body.virtual-landscape .score-cell {
+    min-height: 42px;
+    padding: 3px 2px;
+  }
+
+  body.virtual-landscape .score-cell:nth-child(4),
+  body.virtual-landscape .score-cell:nth-child(5) {
+    display: none;
+  }
+
+  body.virtual-landscape .score-cell strong {
+    font-size: 13px;
+  }
+
+  body.virtual-landscape .score-cell span,
+  body.virtual-landscape .score-cell small {
+    font-size: 7px;
+  }
+
+  body.virtual-landscape .history-score-strip {
+    display: none;
+  }
+
+  body.virtual-landscape .match-progress-track {
+    height: 3px;
+  }
+
+  body.virtual-landscape .game-layout {
+    min-height: 0;
+    display: block;
+  }
+
+  body.virtual-landscape .table-area {
+    min-height: 0;
+    grid-template-rows: auto auto auto auto;
+  }
+
+  body.virtual-landscape .model-band {
+    min-height: 34px;
+    padding: 3px 8px;
+  }
+
+  body.virtual-landscape .model-band .player-heading {
+    min-height: 28px;
+  }
+
+  body.virtual-landscape #modelMelds,
+  body.virtual-landscape #modelHand {
+    display: none;
+  }
+
+  body.virtual-landscape .table-center {
+    min-height: 108px;
+    padding: 4px;
+    grid-template-columns: minmax(0, 1fr) 124px minmax(0, 1fr);
+    grid-template-rows: 108px;
+    gap: 4px;
+  }
+
+  body.virtual-landscape .turn-console {
+    min-height: 108px;
+    padding: 6px;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  body.virtual-landscape .turn-console strong {
+    margin: 2px 0;
+    font-size: 13px;
+  }
+
+  body.virtual-landscape .last-action {
+    margin-top: 4px;
+    padding-top: 4px;
+  }
+
+  body.virtual-landscape .river-zone {
+    min-height: 108px;
+    padding: 4px;
+  }
+
+  body.virtual-landscape .river-zone header {
+    margin-bottom: 3px;
+    font-size: 8px;
+  }
+
+  body.virtual-landscape .river-grid {
+    min-height: 84px;
+    grid-template-columns: repeat(6, var(--river-w));
+    grid-auto-rows: var(--river-h);
+    gap: 2px;
+  }
+
+  body.virtual-landscape .human-band {
+    min-height: 58px;
+    padding: 3px 8px 5px;
+  }
+
+  body.virtual-landscape .human-band .player-heading {
+    min-height: 16px;
+  }
+
+  body.virtual-landscape .hand-row {
+    width: 100%;
+    gap: 0;
+    overflow: visible;
+  }
+
+  body.virtual-landscape .human-hand {
+    min-height: var(--tile-h);
+  }
+
+  body.virtual-landscape .tile {
+    padding: 2px 1px;
+    border-bottom-width: 3px;
+    border-radius: 4px;
+  }
+
+  body.virtual-landscape .tile.drawn {
+    margin-left: 3px;
+  }
+
+  body.virtual-landscape .action-dock {
+    width: 100%;
+    min-height: 54px;
+    position: fixed;
+    z-index: 40;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 4px 8px max(4px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    box-shadow: 0 -6px 16px rgb(7 42 31 / 28%);
+  }
+
+  body.virtual-landscape .forced-hu-mark {
+    display: none;
+  }
+
+  body.virtual-landscape .action-button {
+    min-width: 68px;
+    min-height: 42px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  body.virtual-landscape .discard-confirm {
+    min-width: 126px;
+  }
+
+  body.virtual-landscape .inspection-panel {
+    width: min(560px, 100%);
+    max-height: 92%;
+    position: fixed;
+    z-index: 100;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    display: block;
+    overflow-y: auto;
+    border: 0;
+    border-radius: 12px 0 0;
+    pointer-events: none;
+    transform: translateX(105%);
+    transition: transform 180ms ease-out;
+  }
+
+  body.virtual-landscape.mobile-stats-open .inspection-panel {
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  body.virtual-landscape .mobile-panel-heading {
+    min-height: 52px;
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    padding: 6px 10px;
+    align-items: center;
+    justify-content: space-between;
+    background: #253831;
+    color: #fff;
+  }
+
+  body.virtual-landscape .mobile-panel-heading > div {
+    display: grid;
+    gap: 1px;
+  }
+
+  body.virtual-landscape .mobile-panel-heading span {
+    color: #bfcfc7;
+    font-size: 8px;
+  }
+
+  body.virtual-landscape .mobile-panel-backdrop {
+    width: 100%;
+    height: 100%;
+    position: fixed;
+    z-index: 90;
+    inset: 0;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: rgb(0 0 0 / 45%);
+  }
+
+  body.virtual-landscape .mobile-panel-backdrop[hidden] {
+    display: none;
+  }
+
+  body.virtual-landscape .result-dialog {
+    width: min(680px, calc(100% - 16px));
+    max-height: calc(100% - 8px);
   }
 }

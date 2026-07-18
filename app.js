@@ -24,6 +24,7 @@ const MOBILE_LAYOUT_MEDIA = [
   "(orientation: landscape) and (max-height: 520px) and (max-width: 950px)",
 ].join(", ");
 const mobileLayoutQuery = window.matchMedia(MOBILE_LAYOUT_MEDIA);
+const physicalLandscapeQuery = window.matchMedia("(orientation: landscape)");
 
 const state = {
   game: null,
@@ -40,6 +41,8 @@ const state = {
   selectedDiscard: null,
   lastDiscardClick: { key: null, at: 0 },
   shownResultKey: null,
+  orientationPending: false,
+  requestedOrientation: null,
   matchLength: Number(localStorage.getItem(STORAGE_MATCH_LENGTH)) === 20 ? 20 : 10,
   showModelHand: !FAIR_TEST_MODE && localStorage.getItem(STORAGE_REVEAL) === "true",
   showRecommendationProbabilities: !FAIR_TEST_MODE
@@ -54,6 +57,7 @@ const renderCache = {
 };
 let historyRefreshTask = null;
 let auditRefreshTimer = null;
+let orientationNoticeTimer = null;
 const tilePreloadImages = [];
 
 const elements = Object.fromEntries(
@@ -73,6 +77,8 @@ const elements = Object.fromEntries(
     "humanDiscardProbabilityMass", "humanRecommendationList",
     "newMatchButton", "nextHandButton", "confirmDiscardButton", "modelHandToggle", "recommendationProbabilityToggle",
     "mobileStatsButton", "mobileStatsCloseButton", "mobilePanelBackdrop", "inspectionPanel",
+    "portraitModeButton", "landscapeModeButton", "orientationNotice",
+    "orientationNoticeTitle", "orientationNoticeText", "orientationNoticeCloseButton",
     "modelVisibilityMark",
     "humanSelfDraws", "modelSelfDraws", "humanDealIns", "modelDealIns",
     "averageHuRound", "humanTenpaiRound", "modelTenpaiRound", "averageWinFan",
@@ -1888,6 +1894,138 @@ function setMobileStatsOpen(open) {
   if (active) elements.mobileStatsCloseButton.focus();
 }
 
+function physicalOrientation() {
+  return physicalLandscapeQuery.matches ? "landscape" : "portrait";
+}
+
+function displayedOrientation() {
+  return document.body.classList.contains("virtual-landscape")
+    ? "landscape"
+    : physicalOrientation();
+}
+
+function setVirtualLandscape(active) {
+  const enabled = Boolean(active);
+  document.documentElement.classList.toggle("virtual-landscape-root", enabled);
+  document.body.classList.toggle("virtual-landscape", enabled);
+  if (enabled) setMobileStatsOpen(false);
+  window.requestAnimationFrame(() => window.scrollTo(0, 0));
+}
+
+function setOrientationNotice(title, message) {
+  window.clearTimeout(orientationNoticeTimer);
+  elements.orientationNoticeTitle.textContent = title;
+  elements.orientationNoticeText.textContent = message;
+  elements.orientationNotice.hidden = false;
+  orientationNoticeTimer = window.setTimeout(hideOrientationNotice, 4_000);
+}
+
+function hideOrientationNotice() {
+  window.clearTimeout(orientationNoticeTimer);
+  orientationNoticeTimer = null;
+  elements.orientationNotice.hidden = true;
+}
+
+function syncOrientationControls() {
+  const activeOrientation = state.requestedOrientation || displayedOrientation();
+  const portraitActive = activeOrientation === "portrait";
+  elements.portraitModeButton.classList.toggle("active", portraitActive);
+  elements.landscapeModeButton.classList.toggle("active", !portraitActive);
+  elements.portraitModeButton.setAttribute("aria-pressed", String(portraitActive));
+  elements.landscapeModeButton.setAttribute("aria-pressed", String(!portraitActive));
+  elements.portraitModeButton.disabled = state.orientationPending;
+  elements.landscapeModeButton.disabled = state.orientationPending;
+}
+
+async function requestNativeOrientation(target) {
+  const orientationApi = window.screen?.orientation;
+  if (typeof orientationApi?.lock !== "function") return false;
+
+  const root = document.documentElement;
+  const requestFullscreen = root.requestFullscreen || root.webkitRequestFullscreen;
+  const inFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!inFullscreen && typeof requestFullscreen === "function") {
+    try {
+      await requestFullscreen.call(root);
+    } catch (_error) {
+      // Some browsers permit orientation lock without exposing document fullscreen.
+    }
+  }
+
+  try {
+    await orientationApi.lock(target);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function selectOrientation(target) {
+  if (state.orientationPending || !["portrait", "landscape"].includes(target)) return;
+
+  if (target === displayedOrientation()) {
+    state.requestedOrientation = null;
+    hideOrientationNotice();
+    syncOrientationControls();
+    return;
+  }
+
+  if (target === "portrait" && document.body.classList.contains("virtual-landscape")) {
+    setVirtualLandscape(false);
+    state.requestedOrientation = null;
+    hideOrientationNotice();
+    syncOrientationControls();
+    return;
+  }
+
+  state.orientationPending = true;
+  state.requestedOrientation = target;
+  syncOrientationControls();
+
+  try {
+    const locked = await requestNativeOrientation(target);
+    if (locked) {
+      setVirtualLandscape(false);
+      hideOrientationNotice();
+      return;
+    }
+
+    state.requestedOrientation = null;
+    if (target === "landscape" && physicalOrientation() === "portrait") {
+      setVirtualLandscape(true);
+      setOrientationNotice(
+        "已启用 iPhone 横屏牌桌",
+        "请将手机横握；再次点击“竖屏”即可立即恢复。"
+      );
+      return;
+    }
+
+    setOrientationNotice(
+      "请将手机竖直放置",
+      "当前浏览器不能强制旋转屏幕，手机转为竖向后牌桌会自动恢复。"
+    );
+  } finally {
+    state.orientationPending = false;
+    if (physicalOrientation() === target || document.body.classList.contains("virtual-landscape")) {
+      state.requestedOrientation = null;
+    }
+    syncOrientationControls();
+  }
+}
+
+function handlePhysicalOrientationChange() {
+  if (
+    document.body.classList.contains("virtual-landscape")
+    && physicalOrientation() === "landscape"
+  ) {
+    setVirtualLandscape(false);
+  }
+  state.requestedOrientation = null;
+  hideOrientationNotice();
+  setMobileStatsOpen(false);
+  syncOrientationControls();
+}
+
 function closeResultDialog() {
   if (elements.resultDialog.open) elements.resultDialog.close();
 }
@@ -1926,6 +2064,9 @@ elements.confirmDiscardButton.addEventListener("click", confirmSelectedDiscard);
 elements.mobileStatsButton.addEventListener("click", () => setMobileStatsOpen(true));
 elements.mobileStatsCloseButton.addEventListener("click", () => setMobileStatsOpen(false));
 elements.mobilePanelBackdrop.addEventListener("click", () => setMobileStatsOpen(false));
+elements.portraitModeButton.addEventListener("click", () => selectOrientation("portrait"));
+elements.landscapeModeButton.addEventListener("click", () => selectOrientation("landscape"));
+elements.orientationNoticeCloseButton.addEventListener("click", hideOrientationNotice);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && document.body.classList.contains("mobile-stats-open")) {
     setMobileStatsOpen(false);
@@ -1939,6 +2080,12 @@ if (typeof mobileLayoutQuery.addEventListener === "function") {
 } else {
   mobileLayoutQuery.addListener(handleMobileLayoutChange);
 }
+if (typeof physicalLandscapeQuery.addEventListener === "function") {
+  physicalLandscapeQuery.addEventListener("change", handlePhysicalOrientationChange);
+} else {
+  physicalLandscapeQuery.addListener(handlePhysicalOrientationChange);
+}
+window.addEventListener("orientationchange", handlePhysicalOrientationChange);
 elements.dialogNextHandButton.addEventListener("click", nextHand);
 elements.dialogCloseButton.addEventListener("click", closeResultDialog);
 elements.exportCsvButton.addEventListener("click", exportCsv);
@@ -2017,6 +2164,7 @@ matchLengthButtons.forEach((button) => {
 
 async function boot() {
   applyRuntimeMode();
+  syncOrientationControls();
   removeInviteTokenFromAddressBar();
   try {
     await ensureParticipant();

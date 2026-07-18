@@ -4,9 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>南充麻将 1V1 · Linear-Danger</title>
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./styles.css?v=18" />
+  <link rel="stylesheet" href="./styles.css?v=19" />
 </head>
 <body>
   <div id="participantGate" class="participant-gate" hidden>
@@ -24,9 +26,23 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-tile" aria-hidden="true">南</span>
-        <div>
+        <div class="brand-copy">
           <h1>南充麻将 1V1</h1>
           <p id="modelIdentity">Linear-Danger 模型正在加载</p>
+        </div>
+        <div class="orientation-control mobile-only" role="group" aria-label="牌桌方向">
+          <button
+            id="portraitModeButton"
+            class="orientation-segment active"
+            type="button"
+            aria-pressed="true"
+          >竖屏</button>
+          <button
+            id="landscapeModeButton"
+            class="orientation-segment"
+            type="button"
+            aria-pressed="false"
+          >横屏</button>
         </div>
       </div>
       <div class="top-actions">
@@ -438,6 +454,14 @@
     </section>
   </div>
 
+  <div id="orientationNotice" class="orientation-notice" role="status" hidden>
+    <div>
+      <strong id="orientationNoticeTitle">已切换牌桌方向</strong>
+      <span id="orientationNoticeText"></span>
+    </div>
+    <button id="orientationNoticeCloseButton" type="button" aria-label="关闭方向提示">知道了</button>
+  </div>
+
   <dialog id="resultDialog" class="result-dialog">
     <div class="result-content">
       <span id="resultKicker">本局结束</span>
@@ -520,6 +544,6 @@
   </div>
 
   <script src="./public-config.js?v=1"></script>
-  <script src="./app.js?v=18"></script>
+  <script src="./app.js?v=19"></script>
 </body>
 </html>
