@@ -1,7 +1,8 @@
 {
   "site": "nanchong-mahjong-fair-test",
   "mode": "tester",
-  "api_base": "https://americans-cell-wyoming-vegetables.trycloudflare.com",
+  "api_base": "https://during-men-simon-posters.trycloudflare.com",
+  "config_version": "a6ba058c2e5e",
   "contains_model_weights": false,
   "contains_history_database": false,
   "contains_admin_access_token": false

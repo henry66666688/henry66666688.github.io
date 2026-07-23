@@ -2678,6 +2678,37 @@ body.hide-recommendation-probabilities .recommendation-row {
   box-shadow: inset 3px 0 0 #477765;
 }
 
+.history-model-filter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px 8px;
+  margin: 9px 0 10px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.history-model-filter select {
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 26px 5px 8px;
+  border: 1px solid #aaa393;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.history-model-filter small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+  color: #477765;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .history-persistence-status {
   margin: 7px 0 0;
   padding-top: 7px;
@@ -2874,6 +2905,100 @@ body.hide-recommendation-probabilities .recommendation-row {
   margin: 3px 0 0;
   font-size: 10px;
   font-weight: 800;
+}
+
+.participant-summary-band {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.participant-summary-scroll {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.participant-summary-table {
+  min-width: 1580px;
+  table-layout: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.participant-summary-table th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  white-space: nowrap;
+}
+
+.participant-summary-table th,
+.participant-summary-table td {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.participant-summary-table th:first-child,
+.participant-summary-table td:first-child {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  min-width: 128px;
+  text-align: left;
+}
+
+.participant-summary-table th:nth-child(2),
+.participant-summary-table td:nth-child(2) {
+  position: sticky;
+  z-index: 1;
+  left: 128px;
+  min-width: 82px;
+  text-align: left;
+}
+
+.participant-summary-table th:first-child,
+.participant-summary-table th:nth-child(2) {
+  z-index: 3;
+  background: #e7e2d6;
+}
+
+.participant-summary-table td:first-child,
+.participant-summary-table td:nth-child(2) {
+  background: #fffdf8;
+}
+
+.participant-summary-table tr:nth-child(even) td {
+  background: #faf7ef;
+}
+
+.participant-summary-table .participant-name-column {
+  overflow: hidden;
+  max-width: 128px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+}
+
+.participant-summary-table .participant-id-column {
+  color: var(--muted);
+  font-family: Consolas, monospace;
+  font-size: 9px;
+}
+
+.participant-summary-table .positive-value {
+  color: #16734f;
+  font-weight: 800;
+}
+
+.participant-summary-table .negative-value {
+  color: var(--red);
+  font-weight: 800;
+}
+
+.participant-summary-table .participant-table-empty {
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.participant-summary-table .participant-table-empty.error {
+  color: var(--red);
 }
 
 .participant-empty {

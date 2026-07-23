@@ -29,6 +29,8 @@ const physicalLandscapeQuery = window.matchMedia("(orientation: landscape)");
 const state = {
   game: null,
   history: null,
+  modelVersions: null,
+  selectedModelSha256: "",
   participants: null,
   actionComparisons: null,
   corrections: null,
@@ -89,10 +91,12 @@ const elements = Object.fromEntries(
     "historyModelTenpaiRound", "historyHumanAverageWinFan", "historyModelAverageWinFan",
     "historyClaimSummary", "historyPersistenceStatus", "historyRecordCount",
     "historyHandRecords", "historyExportCsvButton", "historyExportJsonButton",
+    "modelVersionFilter", "modelVersionSummary",
     "participantGate", "participantForm", "participantNameInput", "participantNameError",
     "participantSubmitButton", "testerIdentity", "humanScoreLabel", "historyHumanScoreLabel",
     "participantStatisticsSection", "participantCount", "participantStatisticsList",
-    "participantExportJsonButton",
+    "participantTableCount", "participantStatisticsTableBody",
+    "participantExportCsvButton", "participantExportJsonButton",
     "decisionAuditPanel", "auditLastUpdated", "auditRefreshButton",
     "auditTotalActions", "auditAgreementRate", "auditMismatchCount",
     "auditDiscardMismatchCount", "auditPengGangMismatchCount", "auditConfirmedCount",
@@ -414,9 +418,61 @@ function scheduleHistoryRefresh() {
   void refreshHistoryShared().then(() => render());
 }
 
+function withSelectedModel(path) {
+  if (FAIR_TEST_MODE || !state.selectedModelSha256) return path;
+  const url = new URL(path, window.location.origin);
+  url.searchParams.set("model_sha256", state.selectedModelSha256);
+  return `${url.pathname}${url.search}`;
+}
+
+function modelVersionFileTag() {
+  return state.selectedModelSha256
+    ? state.selectedModelSha256.slice(0, 12).toLowerCase()
+    : "all_models";
+}
+
+async function refreshModelVersions() {
+  if (FAIR_TEST_MODE) return;
+  const payload = await api("/api/history/model-versions");
+  state.modelVersions = payload;
+  const versions = payload.versions || [];
+  const available = new Set(versions.map((version) => version.model_sha256));
+  if (!available.has(state.selectedModelSha256)) {
+    state.selectedModelSha256 = payload.active_model_sha256
+      || versions[0]?.model_sha256
+      || "";
+  }
+  renderModelVersionFilter();
+}
+
+function renderModelVersionFilter() {
+  if (FAIR_TEST_MODE || !elements.modelVersionFilter) return;
+  const versions = state.modelVersions?.versions || [];
+  elements.modelVersionFilter.replaceChildren();
+  versions.forEach((version) => {
+    const option = document.createElement("option");
+    option.value = version.model_sha256;
+    option.textContent = `${version.active ? "当前 · " : ""}${version.model_name} · ${version.model_sha256.slice(0, 8)}`;
+    elements.modelVersionFilter.append(option);
+  });
+  elements.modelVersionFilter.value = state.selectedModelSha256;
+  const selected = versions.find(
+    (version) => version.model_sha256 === state.selectedModelSha256
+  );
+  elements.modelVersionFilter.disabled = versions.length === 0;
+  elements.modelVersionSummary.textContent = selected
+    ? `${selected.hand_count} 局 · ${selected.match_count} 场 · ${selected.action_count} 条动作 · SHA ${selected.model_sha256.slice(0, 12)}`
+    : "当前版本尚无对局，首局结束后开始独立累计";
+}
+
 async function refreshHistory() {
   try {
-    state.history = await api("/api/history/summary?recent_limit=30");
+    if (!FAIR_TEST_MODE) {
+      await refreshModelVersions();
+    }
+    state.history = await api(
+      withSelectedModel("/api/history/summary?recent_limit=30")
+    );
     if (!FAIR_TEST_MODE && (!state.participants || state.game?.terminal)) {
       await refreshParticipants();
     }
@@ -434,7 +490,9 @@ async function refreshHistory() {
 async function refreshParticipants() {
   if (FAIR_TEST_MODE) return;
   try {
-    state.participants = await api("/api/history/participants");
+    state.participants = await api(
+      withSelectedModel("/api/history/participants")
+    );
   } catch (error) {
     state.participants = {
       participant_count: 0,
@@ -455,6 +513,9 @@ async function refreshDecisionAudit() {
     const category = elements.auditCategoryFilter.value;
     if (participantId) common.set("participant_id", participantId);
     if (category) common.set("category", category);
+    if (state.selectedModelSha256) {
+      common.set("model_sha256", state.selectedModelSha256);
+    }
 
     const actionQuery = new URLSearchParams(common);
     actionQuery.set("limit", String(AUDIT_PAGE_SIZE));
@@ -566,11 +627,16 @@ function render() {
   const modelInfo = game.model;
   reconcileDiscardSelection(game.legal_actions);
 
+  const trainingGames = modelInfo.base_games_seen != null
+    ? `${formatCompactGames(modelInfo.base_games_seen)} + ${formatCompactGames(modelInfo.continuation_games_seen)} 局`
+    : `${formatCompactGames(modelInfo.total_training_games)} 局`;
   elements.modelIdentity.textContent = [
     modelInfo.name,
     `Seed ${modelInfo.training_seed}`,
-    `${formatCompactGames(modelInfo.base_games_seen)} + ${formatCompactGames(modelInfo.continuation_games_seen)} 局`,
+    trainingGames,
   ].join(" · ");
+  const modelPlayerLabel = document.getElementById("modelPlayerLabel");
+  if (modelPlayerLabel) modelPlayerLabel.textContent = modelInfo.name || "当前模型";
   elements.completedHands.textContent = `${match.completed_hands} / ${match.target_hands}`;
   elements.remainingHands.textContent = match.match_complete
     ? "比赛已完成"
@@ -1067,7 +1133,10 @@ function renderParticipantStatistics(report) {
   if (FAIR_TEST_MODE) return;
   const participants = report?.participants || [];
   elements.participantCount.textContent = `${participants.length} 人`;
+  elements.participantTableCount.textContent = `${participants.length} 人 · 同名测试账号按测试 ID 分开统计`;
   elements.participantStatisticsList.replaceChildren();
+  elements.participantStatisticsTableBody.replaceChildren();
+  elements.participantExportCsvButton.disabled = !participants.length;
   elements.participantExportJsonButton.disabled = !participants.length;
 
   if (report?.last_error) {
@@ -1075,6 +1144,7 @@ function renderParticipantStatistics(report) {
     error.className = "participant-empty error";
     error.textContent = `读取测试人员统计失败：${report.last_error}`;
     elements.participantStatisticsList.appendChild(error);
+    appendParticipantTableMessage(error.textContent, true);
     return;
   }
   if (!participants.length) {
@@ -1082,12 +1152,14 @@ function renderParticipantStatistics(report) {
     empty.className = "participant-empty";
     empty.textContent = "尚无实名测试数据";
     elements.participantStatisticsList.appendChild(empty);
+    appendParticipantTableMessage(empty.textContent, false);
     return;
   }
 
   participants.forEach((participant) => {
     const summary = participant.summary || emptyHistory();
     const decisionAudit = participant.decision_audit || {};
+    const view = participantStatisticsView(participant);
     const card = document.createElement("article");
     card.className = "participant-stat-card";
     const header = document.createElement("header");
@@ -1099,24 +1171,98 @@ function renderParticipantStatistics(report) {
 
     const metrics = document.createElement("dl");
     metrics.innerHTML = [
-      participantMetric("对局", `${summary.total_hands || 0} 局`),
-      participantMetric("比赛", `${summary.completed_matches || 0} 场完成`),
-      participantMetric("总分", formatSigned(summary.human_score || 0)),
-      participantMetric("胡牌率", formatPercent(summary.human_win_rate)),
-      participantMetric("自摸 / 点炮", `${summary.human_self_draw_wins || 0} / ${summary.human_deal_in_count || 0}`),
-      participantMetric("平均胡牌巡", formatNullableNumber(summary.average_hu_round, "巡")),
-      participantMetric("平均听牌巡", formatNullableNumber(summary.human_average_tenpai_round, "巡")),
-      participantMetric("平均胡番", formatNullableNumber(summary.human_average_win_fan, "番")),
-      participantMetric("碰 / 杠", `${summary.human_action_family_counts?.PENG || 0} / ${sumGangActions(summary.human_action_family_counts || {})}`),
-      participantMetric("比赛胜负", `${summary.human_match_wins || 0} / ${summary.model_match_wins || 0} / ${summary.tied_matches || 0}`),
-      participantMetric("Top1 一致率", formatPercent(decisionAudit.agreement_rate)),
-      participantMetric("不一致候选", String(decisionAudit.mismatch_count || 0)),
-      participantMetric("碰杠不一致", String(decisionAudit.peng_gang_mismatches || 0)),
-      participantMetric("确认纠错", String(decisionAudit.confirmed_reviews || 0)),
+      participantMetric("对局", view.hands),
+      participantMetric("比赛", view.completedMatches),
+      participantMetric("总分", view.score),
+      participantMetric("胡牌率", view.winRate),
+      participantMetric("自摸 / 点炮", view.selfDrawDealIn),
+      participantMetric("平均胡牌巡", view.averageHuRound),
+      participantMetric("平均听牌巡", view.averageTenpaiRound),
+      participantMetric("平均胡番", view.averageFan),
+      participantMetric("碰 / 杠", view.pengGang),
+      participantMetric("比赛胜负", view.matchOutcomes),
+      participantMetric("Top1 一致率", view.top1Agreement),
+      participantMetric("不一致候选", view.mismatches),
+      participantMetric("碰杠不一致", view.pengGangMismatches),
+      participantMetric("确认纠错", view.confirmedCorrections),
     ].join("");
     card.append(header, metrics);
     elements.participantStatisticsList.appendChild(card);
+    appendParticipantTableRow(participant, summary, decisionAudit, view);
   });
+}
+
+function participantStatisticsView(participant) {
+  const summary = participant.summary || emptyHistory();
+  const decisionAudit = participant.decision_audit || {};
+  return {
+    hands: `${summary.total_hands || 0} 局`,
+    completedMatches: `${summary.completed_matches || 0} 场`,
+    score: formatSigned(summary.human_score || 0),
+    winRate: formatPercent(summary.human_win_rate),
+    selfDrawDealIn: `${summary.human_self_draw_wins || 0} / ${summary.human_deal_in_count || 0}`,
+    averageHuRound: formatNullableNumber(summary.average_hu_round, "巡"),
+    averageTenpaiRound: formatNullableNumber(summary.human_average_tenpai_round, "巡"),
+    averageFan: formatNullableNumber(summary.human_average_win_fan, "番"),
+    pengGang: `${summary.human_action_family_counts?.PENG || 0} / ${sumGangActions(summary.human_action_family_counts || {})}`,
+    matchOutcomes: `${summary.human_match_wins || 0} / ${summary.model_match_wins || 0} / ${summary.tied_matches || 0}`,
+    top1Agreement: formatPercent(decisionAudit.agreement_rate),
+    mismatches: String(decisionAudit.mismatch_count || 0),
+    pengGangMismatches: String(decisionAudit.peng_gang_mismatches || 0),
+    confirmedCorrections: String(decisionAudit.confirmed_reviews || 0),
+  };
+}
+
+function appendParticipantTableRow(participant, summary, decisionAudit, view) {
+  const row = document.createElement("tr");
+  row.append(
+    participantTableCell(participant.display_name, "participant-name-column"),
+    participantTableCell(
+      participant.participant_id.slice(0, 8),
+      "participant-id-column",
+      participant.participant_id
+    ),
+    participantTableCell(view.hands),
+    participantTableCell(view.completedMatches),
+    participantTableCell(
+      view.score,
+      Number(summary.human_score || 0) > 0
+        ? "positive-value"
+        : Number(summary.human_score || 0) < 0
+        ? "negative-value"
+        : ""
+    ),
+    participantTableCell(view.winRate),
+    participantTableCell(view.selfDrawDealIn),
+    participantTableCell(view.averageHuRound),
+    participantTableCell(view.averageTenpaiRound),
+    participantTableCell(view.averageFan),
+    participantTableCell(view.pengGang),
+    participantTableCell(view.matchOutcomes),
+    participantTableCell(view.top1Agreement),
+    participantTableCell(view.mismatches),
+    participantTableCell(view.pengGangMismatches),
+    participantTableCell(view.confirmedCorrections)
+  );
+  elements.participantStatisticsTableBody.appendChild(row);
+}
+
+function participantTableCell(value, className = "", title = "") {
+  const cell = document.createElement("td");
+  cell.textContent = value;
+  if (className) cell.className = className;
+  if (title) cell.title = title;
+  return cell;
+}
+
+function appendParticipantTableMessage(message, isError) {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 16;
+  cell.className = isError ? "participant-table-empty error" : "participant-table-empty";
+  cell.textContent = message;
+  row.appendChild(cell);
+  elements.participantStatisticsTableBody.appendChild(row);
 }
 
 function renderDecisionAudit() {
@@ -1505,20 +1651,27 @@ function setAuditReviewButtonsDisabled(disabled) {
 async function exportDecisionAudit(mismatchOnly, format) {
   const label = mismatchOnly ? "corrections" : "action_comparisons";
   await withPending("正在导出决策审计", async () => {
+    const query = new URLSearchParams({
+      mismatch_only: String(mismatchOnly),
+    });
+    if (state.selectedModelSha256) {
+      query.set("model_sha256", state.selectedModelSha256);
+    }
     const payload = await api(
-      `/api/history/action-comparisons/export?mismatch_only=${String(mismatchOnly)}`
+      `/api/history/action-comparisons/export?${query.toString()}`
     );
     if (format === "json") {
       downloadBlob(
         JSON.stringify(payload, null, 2),
-        `nanchong_${label}_${historyExportDate()}.json`,
+        `nanchong_${modelVersionFileTag()}_${label}_${historyExportDate()}.json`,
         "application/json;charset=utf-8"
       );
       return;
     }
     const columns = [
       "history_id", "comparison_id", "recorded_at", "participant_id",
-      "participant_name", "session_id", "hand_number", "seed", "decision_index",
+      "participant_name", "model_name", "model_sha256", "session_id",
+      "hand_number", "seed", "decision_index",
       "phase", "category", "selected_action", "selected_probability",
       "selected_rank", "selected_in_top5", "recommended_action",
       "recommended_probability", "top1_action", "top1_probability",
@@ -1546,7 +1699,7 @@ async function exportDecisionAudit(mismatchOnly, format) {
     });
     downloadBlob(
       `\ufeff${rows.join("\r\n")}`,
-      `nanchong_${label}_${historyExportDate()}.csv`,
+      `nanchong_${modelVersionFileTag()}_${label}_${historyExportDate()}.csv`,
       "text/csv;charset=utf-8"
     );
   });
@@ -1789,7 +1942,7 @@ function exportJson() {
   };
   downloadBlob(
     JSON.stringify(payload, null, 2),
-    `nanchong_linear_danger_${state.game.match.target_hands}games_${state.game.session_id.slice(0, 8)}.json`,
+    `nanchong_${String(state.game.model.sha256 || "model").slice(0, 12).toLowerCase()}_${state.game.match.target_hands}games_${state.game.session_id.slice(0, 8)}.json`,
     "application/json;charset=utf-8"
   );
 }
@@ -1809,17 +1962,17 @@ function exportCsv() {
   });
   downloadBlob(
     `\ufeff${rows.join("\r\n")}`,
-    `nanchong_linear_danger_${state.game.match.target_hands}games_${state.game.session_id.slice(0, 8)}.csv`,
+    `nanchong_${String(state.game.model.sha256 || "model").slice(0, 12).toLowerCase()}_${state.game.match.target_hands}games_${state.game.session_id.slice(0, 8)}.csv`,
     "text/csv;charset=utf-8"
   );
 }
 
 async function exportHistoryJson() {
   await withPending("正在导出全部历史", async () => {
-    const payload = await api("/api/history/export");
+    const payload = await api(withSelectedModel("/api/history/export"));
     downloadBlob(
       JSON.stringify(payload, null, 2),
-      `nanchong_linear_danger_all_history_${historyExportDate()}.json`,
+      `nanchong_${modelVersionFileTag()}_history_${historyExportDate()}.json`,
       "application/json;charset=utf-8"
     );
   });
@@ -1827,10 +1980,11 @@ async function exportHistoryJson() {
 
 async function exportHistoryCsv() {
   await withPending("正在导出全部历史", async () => {
-    const payload = await api("/api/history/export");
+    const payload = await api(withSelectedModel("/api/history/export"));
     const records = payload.hands || [];
     const columns = [
-      "history_id", "recorded_at", "session_id", "hand_number", "seed",
+      "history_id", "recorded_at", "model_name", "model_sha256",
+      "session_id", "hand_number", "seed",
       "human_first_seat", "winner", "terminal_reason", "human_score", "model_score",
       "additive_fan", "total_score", "end_round", "human_first_tenpai_round",
       "model_first_tenpai_round", "decisions", "discards", "pengs", "ming_kongs",
@@ -1842,7 +1996,7 @@ async function exportHistoryCsv() {
     });
     downloadBlob(
       `\ufeff${rows.join("\r\n")}`,
-      `nanchong_linear_danger_all_history_${historyExportDate()}.csv`,
+      `nanchong_${modelVersionFileTag()}_history_${historyExportDate()}.csv`,
       "text/csv;charset=utf-8"
     );
   });
@@ -1851,13 +2005,66 @@ async function exportHistoryCsv() {
 async function exportParticipantStatistics() {
   if (FAIR_TEST_MODE) return;
   await withPending("正在导出测试人员统计", async () => {
-    const payload = await api("/api/history/participants/export");
+    const payload = await api(
+      withSelectedModel("/api/history/participants/export")
+    );
     downloadBlob(
       JSON.stringify(payload, null, 2),
-      `nanchong_test_participants_${historyExportDate()}.json`,
+      `nanchong_${modelVersionFileTag()}_participants_${historyExportDate()}.json`,
       "application/json;charset=utf-8"
     );
   });
+}
+
+function exportParticipantStatisticsCsv() {
+  if (FAIR_TEST_MODE) return;
+  const participants = state.participants?.participants || [];
+  if (!participants.length) return;
+  const columns = [
+    "测试人员", "测试ID", "注册时间", "对局数", "完成比赛数", "总分", "胡牌率",
+    "自摸次数", "点炮次数", "平均胡牌巡", "平均听牌巡", "平均胡番",
+    "碰牌次数", "杠牌次数", "比赛胜", "比赛负", "比赛平",
+    "Top1一致率", "不一致候选", "碰杠不一致", "确认纠错",
+  ];
+  const rows = [columns.join(",")];
+  participants.forEach((participant) => {
+    const summary = participant.summary || emptyHistory();
+    const decisionAudit = participant.decision_audit || {};
+    const actions = summary.human_action_family_counts || {};
+    const record = [
+      participant.display_name,
+      participant.participant_id,
+      participant.created_at,
+      summary.total_hands || 0,
+      summary.completed_matches || 0,
+      summary.human_score || 0,
+      exportPercent(summary.human_win_rate),
+      summary.human_self_draw_wins || 0,
+      summary.human_deal_in_count || 0,
+      summary.average_hu_round,
+      summary.human_average_tenpai_round,
+      summary.human_average_win_fan,
+      actions.PENG || 0,
+      sumGangActions(actions),
+      summary.human_match_wins || 0,
+      summary.model_match_wins || 0,
+      summary.tied_matches || 0,
+      exportPercent(decisionAudit.agreement_rate),
+      decisionAudit.mismatch_count || 0,
+      decisionAudit.peng_gang_mismatches || 0,
+      decisionAudit.confirmed_reviews || 0,
+    ];
+    rows.push(record.map(csvCell).join(","));
+  });
+  downloadBlob(
+    `\ufeff${rows.join("\r\n")}`,
+    `nanchong_${modelVersionFileTag()}_participant_statistics_${historyExportDate()}.csv`,
+    "text/csv;charset=utf-8"
+  );
+}
+
+function exportPercent(value) {
+  return value == null ? "" : `${(Number(value) * 100).toFixed(1)}%`;
 }
 
 function historyExportDate() {
@@ -2092,7 +2299,19 @@ elements.exportCsvButton.addEventListener("click", exportCsv);
 elements.exportJsonButton.addEventListener("click", exportJson);
 elements.historyExportCsvButton.addEventListener("click", exportHistoryCsv);
 elements.historyExportJsonButton.addEventListener("click", exportHistoryJson);
+elements.participantExportCsvButton.addEventListener("click", exportParticipantStatisticsCsv);
 elements.participantExportJsonButton.addEventListener("click", exportParticipantStatistics);
+elements.modelVersionFilter.addEventListener("change", async () => {
+  state.selectedModelSha256 = elements.modelVersionFilter.value;
+  state.participants = null;
+  state.actionComparisons = null;
+  state.corrections = null;
+  state.auditPage = 0;
+  state.correctionPage = 0;
+  await refreshHistoryShared();
+  await refreshDecisionAudit();
+  render();
+});
 elements.auditRefreshButton.addEventListener("click", () => refreshDecisionAudit());
 elements.auditParticipantFilter.addEventListener("change", () => {
   state.auditPage = 0;
@@ -2168,7 +2387,7 @@ async function boot() {
   removeInviteTokenFromAddressBar();
   try {
     await ensureParticipant();
-    await withPending("正在载入 Linear-Danger 模型", restoreOrNewMatch, true);
+    await withPending("正在载入最新模型", restoreOrNewMatch, true);
     scheduleTileFacePreload();
     scheduleDecisionAuditRefresh();
   } catch (error) {

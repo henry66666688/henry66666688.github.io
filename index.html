@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>南充麻将 1V1 · Linear-Danger</title>
+  <title>南充麻将 1V1 · 最新模型</title>
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./styles.css?v=19" />
+  <link rel="stylesheet" href="./styles.css?v=20" />
 </head>
 <body>
   <div id="participantGate" class="participant-gate" hidden>
@@ -28,7 +28,7 @@
         <span class="brand-tile" aria-hidden="true">南</span>
         <div class="brand-copy">
           <h1>南充麻将 1V1</h1>
-          <p id="modelIdentity">Linear-Danger 模型正在加载</p>
+          <p id="modelIdentity">最新模型正在加载</p>
         </div>
         <div class="orientation-control mobile-only" role="group" aria-label="牌桌方向">
           <button
@@ -153,7 +153,7 @@
         <section class="player-band model-band" aria-labelledby="modelPlayerLabel">
           <header class="player-heading">
             <div>
-              <span id="modelPlayerLabel" class="player-name">Linear-Danger</span>
+              <span id="modelPlayerLabel" class="player-name">最新模型</span>
               <span id="modelDealer" class="dealer-mark" hidden>先</span>
             </div>
             <span id="modelVisibilityMark" class="visibility-mark">手牌已隐藏</span>
@@ -281,6 +281,13 @@
               <button id="historyExportJsonButton" type="button" title="导出全部历史 JSON">JSON</button>
             </div>
           </header>
+          <label class="history-model-filter analysis-only-section" for="modelVersionFilter">
+            <span>统计模型版本</span>
+            <select id="modelVersionFilter">
+              <option value="">正在读取版本</option>
+            </select>
+            <small id="modelVersionSummary">每个版本独立统计、独立下载</small>
+          </label>
           <dl class="stat-grid">
             <div><dt>有记录比赛</dt><dd id="historyRecordedMatches">0</dd></div>
             <div><dt>完整比赛</dt><dd id="historyCompletedMatches">0</dd></div>
@@ -304,6 +311,7 @@
             <h2>测试人员统计</h2>
             <div class="export-actions">
               <span id="participantCount">0 人</span>
+              <button id="participantExportCsvButton" type="button" title="导出测试人员统计 CSV">CSV</button>
               <button id="participantExportJsonButton" type="button" title="导出全部测试人员统计">JSON</button>
             </div>
           </header>
@@ -371,6 +379,26 @@
         <div><dt>碰杠不一致</dt><dd id="auditPengGangMismatchCount">0</dd></div>
         <div><dt>确认纠错</dt><dd id="auditConfirmedCount">0</dd></div>
       </dl>
+
+      <section class="audit-table-band participant-summary-band" aria-labelledby="participantSummaryTitle">
+        <header>
+          <div>
+            <h3 id="participantSummaryTitle">测试人员汇总表</h3>
+            <p id="participantTableCount">0 人 · 同名测试账号按测试 ID 分开统计</p>
+          </div>
+        </header>
+        <div class="audit-table-scroll participant-summary-scroll">
+          <table class="audit-table participant-summary-table">
+            <thead><tr>
+              <th>测试人员</th><th>测试 ID</th><th>对局</th><th>完成比赛</th>
+              <th>总分</th><th>胡牌率</th><th>自摸 / 点炮</th><th>平均胡牌巡</th>
+              <th>平均听牌巡</th><th>平均胡番</th><th>碰 / 杠</th><th>比赛胜 / 负 / 平</th>
+              <th>Top1 一致率</th><th>不一致候选</th><th>碰杠不一致</th><th>确认纠错</th>
+            </tr></thead>
+            <tbody id="participantStatisticsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
 
       <div class="audit-toolbar">
         <label>测试人员
@@ -540,10 +568,10 @@
 
   <div id="loadingLayer" class="loading-layer" aria-live="polite">
     <div class="loading-tile" aria-hidden="true">万</div>
-    <strong id="loadingText">正在载入 Linear-Danger 模型</strong>
+    <strong id="loadingText">正在载入最新模型</strong>
   </div>
 
-  <script src="./public-config.js?v=cfb699efebe3"></script>
-  <script src="./app.js?v=19"></script>
+  <script src="./public-config.js?v=a6ba058c2e5e"></script>
+  <script src="./app.js?v=20"></script>
 </body>
 </html>
